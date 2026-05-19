@@ -1,0 +1,6 @@
+venu/
+__pycache__/
+.marimo/
+*.csv
+*.joblib
+*.pkl
