@@ -1,6 +1,6 @@
 venu/
 __pycache__/
 .marimo/
-#*.csv
+*.csv
 *.joblib
 *.pkl
