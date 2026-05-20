@@ -14,11 +14,11 @@ def _save_to_csv(filename, rtt, loss, status):
 
     """
 
-    # 1. data/ 폴더가 없으면 에러 방지를 위해 자동 생성
-
-    os.makedirs('data', exist_ok=True)
-
-    file_path = f"data/{filename}"
+    # 1. 상위 폴더(Net_Guardian/)로 나가서 data/ 폴더를 가리키게 함
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+    os.makedirs(data_dir, exist_ok=True)
+    
+    file_path = os.path.join(data_dir, filename)
 
     
 

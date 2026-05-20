@@ -7,7 +7,7 @@ import os
 # 상위 폴더를 sys.path에 추가하여 collector 모듈을 찾을 수 있게 합니다.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from collector.save_data import (
+from save_data import (
     save_normal_data,
     save_delay_data,
     save_loss_data,
