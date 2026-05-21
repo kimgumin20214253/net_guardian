@@ -9,7 +9,7 @@ import joblib
 def load_and_label_data():
     data_list = []
     
-    # 1. 경로 설정 (Net_Guardian/data 폴더를 정확히 가리킴)
+# 현재 파일(analysis.py)이 network/ 에 있으므로 한 단계 상위가 Net_Guardian/ 임
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     data_dir = os.path.join(base_dir, 'data')
     
