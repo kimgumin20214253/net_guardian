@@ -3,8 +3,7 @@ import asyncio
 import sys
 import os
 
-# 현재 파일이 server 폴더에 있고, collector가 상위 폴더 내에 있으므로
-# 상위 폴더를 sys.path에 추가하여 collector 모듈을 찾을 수 있게 합니다.
+# 상위 폴더 경로 설정
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from save_data import (
@@ -34,7 +33,7 @@ def select_scenario():
 async def run_client():
     scenario_mode = select_scenario()
     
-    # 비동기 클라이언트 설정 (timeout 1초)
+    # 비동기 클라이언트 설정
     client = AsyncModbusTcpClient('127.0.0.1', port=5020, timeout=1)
     
     if not await client.connect():
@@ -54,23 +53,29 @@ async def run_client():
             end_time = time.time()
             rtt = (end_time - start_time) * 1000
             
+            # 수집 로직: 성공/실패 여부에 따라 라벨링
             if not read_result.isError():
-                val = read_result.registers[0]
-                print(f"성공: 값 {val} | RTT: {rtt:.2f}ms | 상태: normal")
-                
-                if scenario_mode == 1: save_normal_data(rtt, 0, "normal")
-                elif scenario_mode == 2: save_delay_data(rtt, 0, "normal")
-                elif scenario_mode == 3: save_loss_data(rtt, 0, "normal")
-                elif scenario_mode == 4: save_delay_loss_data(rtt, 0, "normal")
+                # 통신 성공 시
+                status_label = "normal"
+                loss_val = 0
+                print(f"성공: RTT: {rtt:.2f}ms | 상태: normal")
             else:
-                print(f"실패: 타임아웃/에러 | RTT: {rtt:.2f}ms | 상태: error")
-                
-                if scenario_mode == 1: save_normal_data(rtt, 1, "abnormal")
-                elif scenario_mode == 2: save_delay_data(rtt, 1, "delay")
-                elif scenario_mode == 3: save_loss_data(rtt, 1, "loss")
-                elif scenario_mode == 4: save_delay_loss_data(rtt, 1, "delay_loss")
+                # 통신 실패 시 (장애 발생)
+                # 시나리오에 따라 장애 상태를 명확히 기록
+                if scenario_mode == 1: status_label = "normal"
+                elif scenario_mode == 2: status_label = "delay"
+                elif scenario_mode == 3: status_label = "loss"
+                elif scenario_mode == 4: status_label = "delay_loss"
+                loss_val = 1
+                print(f"실패: RTT: {rtt:.2f}ms | 상태: {status_label}")
 
-            await asyncio.sleep(1)
+            # 파일 저장
+            if scenario_mode == 1: save_normal_data(rtt, loss_val, status_label)
+            elif scenario_mode == 2: save_delay_data(rtt, loss_val, status_label)
+            elif scenario_mode == 3: save_loss_data(rtt, loss_val, status_label)
+            elif scenario_mode == 4: save_delay_loss_data(rtt, loss_val, status_label)
+
+            await asyncio.sleep(0.1) # 수집 속도 조절 (초당 약 10회)
 
     except asyncio.CancelledError:
         print("\n프로그램이 중단되었습니다.")

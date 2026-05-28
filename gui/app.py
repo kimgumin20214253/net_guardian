@@ -36,7 +36,7 @@ def get_latest_data():
                 st.warning(f"데이터 파일에 rtt 또는 loss 컬럼이 없습니다. 현재 컬럼: {list(df.columns)}")
                 return pd.DataFrame()
             
-            return df.tail(2000)
+            return df.tail(10000)
         except Exception as e:
             st.error(f"데이터 읽기 오류: {e}")
             return pd.DataFrame()
