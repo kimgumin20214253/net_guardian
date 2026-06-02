@@ -16,7 +16,7 @@ from pymodbus.client import AsyncModbusTcpClient
 
 def select_scenario():
     print("=" * 50)
-    print(" [산업 네트워크 장애 데이터 수집기] ")
+    print(" [산업 네트워크 장애 데이터 수집기 - 표준 라벨링 적용] ")
     print("=" * 50)
     print(" 1. 정상 시나리오")
     print(" 2. 지연 장애 시나리오")
@@ -47,35 +47,38 @@ async def run_client():
             start_time = time.time()
             
             # 비동기 쓰기 및 읽기
-            write_result = await client.write_register(0, 77)
-            read_result = await client.read_holding_registers(0, 1)
+            write_result, read_result = await asyncio.gather(
+                client.write_register(0, 77),
+                client.read_holding_registers(0, 1),
+                return_exceptions=True
+            )
             
             end_time = time.time()
             rtt = (end_time - start_time) * 1000
             
-            # 수집 로직: 성공/실패 여부에 따라 라벨링
-            if not read_result.isError():
-                # 통신 성공 시
+            # 장애 판단 로직 (국제 표준 및 Thin-stream 특성 반영)
+            # 정상(normal): RTT < 150ms AND 성공(에러없음)
+            # 이상(anomaly): RTT > 450ms OR 에러발생(Loss 발생)
+            
+            is_success = not isinstance(read_result, Exception) and not read_result.isError()
+            
+            # Loss 여부: 에러 발생 시 1, 아니면 0
+            loss_val = 0 if is_success else 1
+            
+            if is_success and rtt < 150:
                 status_label = "normal"
-                loss_val = 0
-                print(f"성공: RTT: {rtt:.2f}ms | 상태: normal")
             else:
-                # 통신 실패 시 (장애 발생)
-                # 시나리오에 따라 장애 상태를 명확히 기록
-                if scenario_mode == 1: status_label = "normal"
-                elif scenario_mode == 2: status_label = "delay"
-                elif scenario_mode == 3: status_label = "loss"
-                elif scenario_mode == 4: status_label = "delay_loss"
-                loss_val = 1
-                print(f"실패: RTT: {rtt:.2f}ms | 상태: {status_label}")
+                status_label = "anomaly" # 지연/손실/복합 장애를 1(anomaly)로 통합
+            
+            print(f"RTT: {rtt:.2f}ms | Loss: {loss_val} | 상태: {status_label}")
 
-            # 파일 저장
+            # 파일 저장 (이전 로직 유지)
             if scenario_mode == 1: save_normal_data(rtt, loss_val, status_label)
             elif scenario_mode == 2: save_delay_data(rtt, loss_val, status_label)
             elif scenario_mode == 3: save_loss_data(rtt, loss_val, status_label)
             elif scenario_mode == 4: save_delay_loss_data(rtt, loss_val, status_label)
 
-            await asyncio.sleep(0.1) # 수집 속도 조절 (초당 약 10회)
+            await asyncio.sleep(0.1) 
 
     except asyncio.CancelledError:
         print("\n프로그램이 중단되었습니다.")
