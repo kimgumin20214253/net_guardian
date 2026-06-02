@@ -16,7 +16,7 @@ from pymodbus.client import AsyncModbusTcpClient
 
 def select_scenario():
     print("=" * 50)
-    print(" [산업 네트워크 장애 데이터 수집기 - 표준 라벨링 적용] ")
+    print(" [산업 네트워크 장애 데이터 수집기 - 국제 표준 라벨링 적용] ")
     print("=" * 50)
     print(" 1. 정상 시나리오")
     print(" 2. 지연 장애 시나리오")
@@ -56,23 +56,20 @@ async def run_client():
             end_time = time.time()
             rtt = (end_time - start_time) * 1000
             
-            # 장애 판단 로직 (국제 표준 및 Thin-stream 특성 반영)
-            # 정상(normal): RTT < 150ms AND 성공(에러없음)
-            # 이상(anomaly): RTT > 450ms OR 에러발생(Loss 발생)
-            
+            # 1. 성공 여부 판단
             is_success = not isinstance(read_result, Exception) and not read_result.isError()
-            
-            # Loss 여부: 에러 발생 시 1, 아니면 0
             loss_val = 0 if is_success else 1
             
-            if is_success and rtt < 150:
-                status_label = "normal"
+            # 2. 국제 표준 라벨링 (NORMAL: 0, ANOMALY: 1)
+            # 조건: RTT 450ms 초과 OR Loss 1% 이상(에러 발생 시) -> Anomaly(1)
+            if (rtt > 450) or (loss_val == 1):
+                status_label = 1  # ANOMALY
             else:
-                status_label = "anomaly" # 지연/손실/복합 장애를 1(anomaly)로 통합
+                status_label = 0  # NORMAL
             
-            print(f"RTT: {rtt:.2f}ms | Loss: {loss_val} | 상태: {status_label}")
+            print(f"RTT: {rtt:.2f}ms | Loss: {loss_val} | 타겟 라벨: {status_label}")
 
-            # 파일 저장 (이전 로직 유지)
+            # 파일 저장 (데이터셋 구축용)
             if scenario_mode == 1: save_normal_data(rtt, loss_val, status_label)
             elif scenario_mode == 2: save_delay_data(rtt, loss_val, status_label)
             elif scenario_mode == 3: save_loss_data(rtt, loss_val, status_label)

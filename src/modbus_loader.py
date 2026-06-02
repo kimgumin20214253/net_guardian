@@ -15,7 +15,7 @@ import os
 
 client = ModbusTcpClient(
     '127.0.0.1',
-    port=502
+    port=5020
 )
 
 LOG_FILE = "logs/realtime.csv"

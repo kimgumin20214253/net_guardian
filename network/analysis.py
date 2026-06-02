@@ -1,80 +1,74 @@
 import pandas as pd
 import numpy as np
 import os
-from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, accuracy_score
+from sklearn.metrics import classification_report
 import joblib
 
 def load_and_label_data():
-    data_list = []
-    
-# 현재 파일(analysis.py)이 network/ 에 있으므로 한 단계 상위가 Net_Guardian/ 임
+    """
+    logs/realtime.csv를 읽어 국제 표준(RTT 450ms 초과 OR Loss 1% 이상)에 따라
+    라벨링(target)을 수행하는 함수
+    """
+    # 현재 파일(analysis.py) 위치에서 logs/realtime.csv 경로 설정
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    data_dir = os.path.join(base_dir, 'data')
+    file_path = os.path.join(base_dir, 'logs', 'realtime.csv')
     
-    scenarios = {
-        'raw_normal.csv': 0,
-        'raw_delay.csv': 1,
-        'raw_loss.csv': 2,
-        'raw_delay_loss.csv': 3
-    }
-    
-    for file_name, label in scenarios.items():
-        file_path = os.path.join(data_dir, file_name)
+    if not os.path.exists(file_path):
+        print(f"❌ 데이터 파일 없음: {file_path}")
+        return None
+
+    try:
+        # 데이터 로드
+        df = pd.read_csv(file_path)
+        print(f"✅ 데이터 로드 성공: {len(df)} 행")
         
-        if os.path.exists(file_path):
-            try:
-                df = pd.read_csv(file_path, header=None, names=['time', 'rtt', 'loss', 'status'])
-                # 2. 컬럼명 정제: 소문자화 + 공백 제거
-                df.columns = df.columns.str.strip().str.lower()
-                
-                # 3. [강제 매핑] 헤더에 다른 이름이 있어도 rtt와 loss로 고정
-                # CSV 파일이 실제로는 다른 이름을 가졌더라도 아래에서 지정한 이름으로 변경
-                rename_dict = {}
-                # 대소문자나 특수문자가 섞여있을 경우를 대비해 첫 번째 열이 time 등일 경우
-                # 컬럼 이름이 ['time', 'rtt', 'loss', 'status']라고 가정하고 강제 설정
-                if len(df.columns) >= 3:
-                    df.columns = ['time', 'rtt', 'loss', 'status']
-                
-                print(f"✅ 파일 로드: {file_name} | 인식된 컬럼: {list(df.columns)}")
-                
-                # 필수 컬럼만 추출
-                sub_df = df[['rtt', 'loss']].copy()
-                sub_df['rtt'] = pd.to_numeric(sub_df['rtt'], errors='coerce')
-                sub_df['loss'] = pd.to_numeric(sub_df['loss'], errors='coerce')
-                sub_df = sub_df.dropna()
-                
-                if not sub_df.empty:
-                    sub_df['target'] = label
-                    data_list.append(sub_df)
-            except Exception as e:
-                print(f"❌ 읽기 오류 ({file_name}): {e}")
-        else:
-            print(f"🔍 파일 없음: {file_path}")
-            
-    return pd.concat(data_list, ignore_index=True) if data_list else None
+        # 1. 수치형 변환
+        df['rtt'] = pd.to_numeric(df['response_time_ms'], errors='coerce')
+        df['loss'] = (df['success'] == 0).astype(int) # success=0 이면 손실(1)
+        
+        # 2. 국제 표준에 따른 자동 라벨링 (target)
+        # RTT 450ms 초과 OR Loss 1% 이상인 경우 Anomaly(1), 아니면 Normal(0)
+        # modbus_loader에서 5% 확률로 success=0을 주므로, 
+        # 단순히 success=0을 기준으로 Loss=1로 간주합니다.
+        
+        df['target'] = np.where(
+            (df['rtt'] > 450) | (df['loss'] == 1), 1, 0
+        )
+        
+        # 데이터 정제
+        df = df.dropna(subset=['rtt', 'loss'])
+        return df[['rtt', 'loss', 'target']]
+
+    except Exception as e:
+        print(f"❌ 데이터 전처리 오류: {e}")
+        return None
 
 def train_random_forest():
-    print("🚀 AI 모델 학습 시작!")
+    print("🚀 AI 모델 학습 시작 (국제 표준 적용)!")
     df = load_and_label_data()
     
     if df is None or df.empty:
-        print("❌ 학습 데이터가 없습니다. CSV 파일들을 확인해주세요.")
+        print("❌ 학습할 데이터가 없습니다.")
         return
 
+    # 학습 및 테스트 데이터 분리
+    from sklearn.model_selection import train_test_split
     X = df[['rtt', 'loss']]
     y = df['target']
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42, stratify=y)
+    
+    # 데이터가 충분할 때만 분할 학습 진행
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     
     model = RandomForestClassifier(n_estimators=100, random_state=42)
     model.fit(X_train, y_train)
     
     # 모델 저장
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    model_path = os.path.join(base_dir, 'models', 'network_rf_model.joblib')
-    os.makedirs(os.path.dirname(model_path), exist_ok=True)
+    model_dir = os.path.join(base_dir, 'models')
+    os.makedirs(model_dir, exist_ok=True)
+    model_path = os.path.join(model_dir, 'network_rf_model.joblib')
+    
     joblib.dump(model, model_path)
     
     print(f"💾 학습 완료! 모델 저장 위치: {model_path}")
