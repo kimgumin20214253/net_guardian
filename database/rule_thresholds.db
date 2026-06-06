@@ -1,1 +1,15 @@
+# [승현] DB 파일을 열고 가장 먼저 생성해야 할 기준치 테이블 구성 양식 예시
 
+# -- 장애 판단 기준 및 논문 기반 대응 가이드 테이블 예시
+CREATE TABLE IF NOT EXISTS threshold_rules (
+    status_id TEXT PRIMARY KEY,
+    status_name TEXT,
+    rtt_limit REAL,
+    action_guide TEXT
+);
+
+-- 논문 고증 수치 및 액션 지침 기초 데이터 삽입
+INSERT OR IGNORE INTO threshold_rules VALUES ('A', 'Normal', 4.0, 'PLC 로봇 제어 명령 안정 상태. 추가 조치 불필요.');
+INSERT OR IGNORE INTO threshold_rules VALUES ('B', 'Delay', 150.0, '⚠️ 경고: 네트워크 대역폭 포화. 비가동성 트래픽 대역폭 제한(Action) 트리거.');
+INSERT OR IGNORE INTO threshold_rules VALUES ('C', 'Loss', 300.0, '🚨 위험: EMI 오염 수렴. 공정 데이터 유실 방지를 위해 노이즈 감쇄 필터 모드 전환 명령어 송신.');
+INSERT OR IGNORE INTO threshold_rules VALUES ('D', 'DoS', 800.0, '💥 치명적 재난: 네트워크 마비. 공격 IP 차단 및 방화벽 룰셋 강제 적용.');
