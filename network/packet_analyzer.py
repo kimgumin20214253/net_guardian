@@ -1,9 +1,10 @@
-# [구민] 5대 피처 실시간 연산 파이썬 엔진
+# [구민] 5대 피처 실시간 연산 파이썬 엔진 (경로 수정 완결본)
 import csv
 import time
 import numpy as np
 import subprocess
 import re
+import os
 
 # 팀장 지시사항: 입력 피처 5개와 정답 라벨 1개를 명확히 분리 정의
 FEATURES = ['avg_rtt', 'max_rtt', 'std_rtt', 'moving_avg', 'rtt_change_rate']
@@ -11,7 +12,12 @@ LABEL = ['is_anomaly']
 
 # CSV 파일에 저장할 최종 헤더 순서
 CSV_HEADER = FEATURES + LABEL
-CSV_FILE = 'data/net_guardian_robust_dataset.csv'
+
+# ★ 팀장 정밀 교정: network/ 폴더 안에서 실행되므로 상위 폴더의 data/를 가리키도록 '../' 필수 반영
+CSV_FILE = '../data/net_guardian_robust_dataset.csv'
+
+# data/ 폴더가 없을 경우를 대비한 안전장치 추가
+os.makedirs(os.path.dirname(CSV_FILE), exist_ok=True)
 
 # CSV 초기화 및 헤더 작성
 with open(CSV_FILE, 'w', newline='') as f:
@@ -40,6 +46,7 @@ def get_current_modbus_rtt():
 
 def get_current_label():
     try:
+        # 이 라벨 임시 파일도 network/ 안에서 생성되므로 현재 경로 파일 그대로 유지
         with open('.current_label', 'r') as f:
             return int(f.read().strip())
     except:
