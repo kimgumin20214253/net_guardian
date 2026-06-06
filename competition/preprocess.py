@@ -1,39 +1,46 @@
+# [구민, 승현 공통] 주말 3대 EDA 미션 자동화 스크립트
 import pandas as pd
-import glob
-import os
+import seaborn as sns
+import matplotlib.pyplot as plt
 
-def preprocess_data(data_dir='data/', output_file='data/final_cleaned_data.csv'):
-    all_files = glob.glob(os.path.join(data_dir, "raw_*.csv"))
-    
-    df_list = []
-    
-    for filename in all_files:
-        df = pd.read_csv(filename, header=None)
-        
-        # 1. 컬럼 정리 (RTT값만 추출)
-        df = df.iloc[:, [1]]
-        df.columns = ['rtt']
-        
-        # 2. 파일명에서 시나리오명 추출
-        filename_only = os.path.basename(filename)
-        scenario = filename_only.replace('raw_', '').replace('.csv', '')
-        
-        # 3. [요청 반영] is_anomaly 컬럼 추가 (normal은 0, 나머지는 1)
-        # 만약 파일명에 'normal'이 포함되어 있으면 0, 아니면 1
-        df['is_anomaly'] = 0 if 'normal' in scenario else 1
-        df['scenario'] = scenario
-        
-        # 4. 정제 (숫자 변환 및 결측치 처리)
-        df['rtt'] = pd.to_numeric(df['rtt'], errors='coerce')
-        df['rtt'] = df['rtt'].interpolate(method='linear')
-        
-        df_list.append(df.dropna())
+# 데이터 로드 (팀장이 정제 명령 내린 파일)
+data_path = 'data/final_cleaned_data.csv'
+df = pd.read_csv(data_path)
 
-    combined_df = pd.concat(df_list, ignore_index=True)
-    combined_df.to_csv(output_file, index=False)
-    
-    print(f"✅ 정제 완료: {len(combined_df)}건 저장")
-    print(combined_df.groupby(['scenario', 'is_anomaly']).size())
+# =========================================================
+# 미션 1: 라벨별 5대 피처 기술 통계량 분석 (.describe())
+# =========================================================
+print("📊 [미션 1] 정상(0) vs 장애(1) 5대 피처 기술 통계 요약")
+summary = df.groupby('is_anomaly').describe().T
+summary.to_csv('data/eda_mission_1_describe.csv')
+print(summary)
+print("\n" + "="*50 + "\n")
 
-if __name__ == "__main__":
-    preprocess_data()
+# =========================================================
+# 미션 2: 4대 시나리오 RTT 가우시안 정규분포 밀도 시각화
+# =========================================================
+plt.figure(figsize=(10, 6))
+# 수집 엔진이 찍어준 RTT 값을 기준으로 정상/장애 분포를 분리 시각화
+sns.histplot(data=df, x='avg_rtt', hue='is_anomaly', kde=True, bins=50, palette='Set1', multiple='layer')
+plt.title('Mission 2: Gaussian RTT Distribution (Normal vs Anomaly)')
+plt.xlabel('Average RTT (ms)')
+plt.ylabel('Density / Count')
+plt.grid(True)
+plt.savefig('data/eda_mission_2_gaussian_plot.png', dpi=300)
+plt.close()
+print("✅ [미션 2] 가우시안 정규분포 밀도 히스토그램 이미지 저장 완료!")
+
+# =========================================================
+# 미션 3: 5대 피처 간의 상관관계 히트맵 (Correlation Heatmap)
+# =========================================================
+plt.figure(figsize=(8, 6))
+# 5대 피처와 라벨 간의 피어슨 상관계수 연산
+features_list = ['avg_rtt', 'max_rtt', 'std_rtt', 'moving_avg', 'rtt_change_rate', 'is_anomaly']
+corr_matrix = df[features_list].corr()
+
+sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt=".2f", linewidths=0.5)
+plt.title('Mission 3: 5-Features Correlation Heatmap')
+plt.tight_layout()
+plt.savefig('data/eda_mission_3_heatmap.png', dpi=300)
+plt.close()
+print("✅ [미션 3] 다중공선성 검증용 상관관계 히트맵 이미지 저장 완료!")
