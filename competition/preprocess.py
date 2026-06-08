@@ -6,8 +6,8 @@ import os
 
 def run_pipeline():
     # ★ 팀장 정밀 교정: competition/ 폴더 안에서 실행되므로 상위 폴더의 data/를 가리키도록 '../' 반영
-    input_file = '../data/net_guardian_robust_dataset.csv'
-    output_file = '../data/final_cleaned_data.csv'
+    input_file = 'data/net_guardian_robust_dataset.csv'
+    output_file = 'data/final_cleaned_data.csv'
     
     print("🚀 [1단계] 구민 실측 원본 데이터셋 전처리 시작...")
     if not os.path.exists(input_file):
@@ -35,7 +35,7 @@ def run_pipeline():
     # 미션 1: 라벨별 5대 피처 기술 통계량 분석 (.describe())
     print("📊 [미션 1] 정상(0) vs 장애(1) 5대 피처 기술 통계 요약")
     summary = final_df.groupby('is_anomaly').describe().T
-    summary.to_csv('../data/eda_mission_1_describe.csv')  # <-- 상위 경로 '../' 반영
+    summary.to_csv('data/eda_mission_1_describe.csv')  # <-- 상위 경로 '../' 반영
     print(summary)
     print("\n" + "="*50 + "\n")
 
@@ -46,7 +46,7 @@ def run_pipeline():
     plt.xlabel('Average RTT (ms)')
     plt.ylabel('Density / Count')
     plt.grid(True)
-    plt.savefig('../data/eda_mission_2_gaussian_plot.png', dpi=300)  # <-- 상위 경로 '../' 반영
+    plt.savefig('data/eda_mission_2_gaussian_plot.png', dpi=300)  # <-- 상위 경로 '../' 반영
     plt.close()
     print("✅ [미션 2] 가우시안 정규분포 밀도 히스토그램 이미지 저장 완료!")
 
@@ -56,7 +56,7 @@ def run_pipeline():
     sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt=".2f", linewidths=0.5)
     plt.title('Mission 3: 5-Features Correlation Heatmap')
     plt.tight_layout()
-    plt.savefig('../data/eda_mission_3_heatmap.png', dpi=300)  # <-- 상위 경로 '../' 반영
+    plt.savefig('data/eda_mission_3_heatmap.png', dpi=300)  # <-- 상위 경로 '../' 반영
     plt.close()
     print("✅ [미션 3] 다중공선성 검증용 상관관계 히트맵 이미지 저장 완료!")
     print("\n[+] 모든 전처리 및 EDA 파일이 data/ 폴더에 완벽하게 적립되었습니다!")

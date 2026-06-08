@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+import joblib
+>>>>>>> 04277f0 (Feat: Complete robust dataset and final AI model sync)
 import os
 import pandas as pd
 import pickle
@@ -8,7 +12,11 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 # 1. 경로 설정 (최상위 폴더 기준)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(BASE_DIR, 'data', 'net_guardian_robust_dataset.csv')
+<<<<<<< HEAD
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'final_model.pkl')
+=======
+MODEL_PATH = os.path.join(BASE_DIR, 'models', 'best_anomaly_detector.pkl')
+>>>>>>> 04277f0 (Feat: Complete robust dataset and final AI model sync)
 
 print("[+] 수집된 데이터 및 학습된 AI 모델 로드 중...")
 
@@ -24,8 +32,12 @@ if not os.path.exists(DATA_PATH):
 
 # 데이터 및 모델 불러오기
 df = pd.read_csv(DATA_PATH)
+<<<<<<< HEAD
 with open(MODEL_PATH, 'rb') as f:
     model = pickle.load(f)
+=======
+model = joblib.load(MODEL_PATH)
+>>>>>>> 04277f0 (Feat: Complete robust dataset and final AI model sync)
 
 # 2. 전처리 (결측치 제거 및 Feature/Label 분리)
 df = df.dropna()

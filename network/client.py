@@ -14,33 +14,30 @@ from save_data import (
 )
 from pymodbus.client import AsyncModbusTcpClient
 
-def select_scenario():
-    print("=" * 50)
-    print(" [산업 네트워크 장애 데이터 수집기 - 국제 표준 라벨링 적용] ")
-    print("=" * 50)
-    print(" 1. 정상 시나리오")
-    print(" 2. 지연 장애 시나리오")
-    print(" 3. 패킷 손실 시나리오")
-    print(" 4. 복합 장애(지연+손실) 시나리오")
-    print("=" * 50)
-    
-    while True:
-        choice = input("시나리오 번호를 입력하세요 (1~4): ").strip()
-        if choice in ['1', '2', '3', '4']:
-            return int(choice)
-        print("잘못된 입력입니다. 1에서 4 사이의 숫자를 입력해 주세요.")
+def get_auto_label():
+    """
+    [자동화 핵심] 셸 스크립트가 실시간으로 변경하는 .current_label 파일을 읽어와
+    수동 입력 없이 정상(0) 또는 장애(1) 상태를 자동으로 동기화합니다.
+    """
+    try:
+        with open('.current_label', 'r') as f:
+            label = int(f.read().strip())
+        return label
+    except Exception:
+        # 파일이 아직 생성되지 않았거나 읽기 오류 발생 시 기본값은 정상(0) 처리
+        return 0
 
 async def run_client():
-    scenario_mode = select_scenario()
+    # ❌ 기존의 수동 번호 선택 창(select_scenario)을 완전히 제거하여 무한 대기 오류를 차단합니다.
     
-    # 비동기 클라이언트 설정
+    # 비동기 클라이언트 설정 (구민이의 5020 포트 완벽 반영)
     client = AsyncModbusTcpClient('127.0.0.1', port=5020, timeout=1)
     
     if not await client.connect():
         print("❌ 서버에 접속할 수 없습니다.")
         return
 
-    print("\n[알림] 통신 시작 및 수집 중... (종료: Ctrl + C)")
+    print("\n[알림] master_collector.sh 실시간 동기화 완료. 자동 수집 중... (종료: Ctrl + C)")
 
     try:
         while True:
@@ -56,24 +53,33 @@ async def run_client():
             end_time = time.time()
             rtt = (end_time - start_time) * 1000
             
-            # 1. 성공 여부 판단
+            # 1. 성공 여부 판단 (패킷 유실 체크)
             is_success = not isinstance(read_result, Exception) and not read_result.isError()
             loss_val = 0 if is_success else 1
             
-            # 2. 국제 표준 라벨링 (NORMAL: 0, ANOMALY: 1)
-            # 조건: RTT 450ms 초과 OR Loss 1% 이상(에러 발생 시) -> Anomaly(1)
-            if (rtt > 450) or (loss_val == 1):
-                status_label = 1  # ANOMALY
-            else:
-                status_label = 0  # NORMAL
+            # 🔥 [자동화] 4번 창 셸 스크립트가 마킹해 주는 현재 정답 라벨을 실시간으로 가져옴
+            status_label = get_auto_label()
             
-            print(f"RTT: {rtt:.2f}ms | Loss: {loss_val} | 타겟 라벨: {status_label}")
+            print(f"RTT: {rtt:.2f}ms | Loss: {loss_val} | 타겟 라벨(자동): {status_label}")
 
-            # 파일 저장 (데이터셋 구축용)
-            if scenario_mode == 1: save_normal_data(rtt, loss_val, status_label)
-            elif scenario_mode == 2: save_delay_data(rtt, loss_val, status_label)
-            elif scenario_mode == 3: save_loss_data(rtt, loss_val, status_label)
-            elif scenario_mode == 4: save_delay_loss_data(rtt, loss_val, status_label)
+            # 🔥 [자동화] 셸 스크립트의 실시간 라벨(status_label)과 실제 측정된 Loss/RTT를 결합하여 
+            # 수동 입력 없이 파이썬이 알아서 네 가지 창고 함수로 실시간 분기 저장합니다.
+# 🔥 [정밀 교정] 실제 물리적 측정값(Loss, RTT)을 기반으로 창고를 완벽하게 분기합니다.
+            if loss_val == 1 and rtt > 450:
+                # 1. 유실과 지연(450ms 초과)이 동시에 발생한 경우 -> 복합 장애
+                save_delay_loss_data(rtt, loss_val, status_label)
+                
+            elif loss_val == 1:
+                # 2. RTT는 정상 범위이거나 타임아웃 안쪽인데 유실만 발생한 경우 -> 패킷 손실
+                save_loss_data(rtt, loss_val, status_label)
+                
+            elif rtt > 150: 
+                # 3. 유실은 없으나 RTT가 국제 표준 정상 범주(150ms)를 초과하여 치솟은 경우 -> 지연 장애
+                save_delay_data(rtt, loss_val, status_label)
+                
+            else:
+                # 4. 유실도 없고, RTT도 150ms 미만으로 지극히 안정적인 경우 -> 정상 공정 데이터
+                save_normal_data(rtt, loss_val, status_label)
 
             await asyncio.sleep(0.1) 
 
@@ -87,4 +93,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(run_client())
     except KeyboardInterrupt:
-        pass
+        pass     

@@ -1,6 +1,6 @@
 # [구민] tc netem 장애 시간차 자동 주입 셸 스크립트 
 #!/bin/bash
-INTERFACE="eth0" # 본인 리눅스 네트워크 카드 이름으로 수정 필수!
+INTERFACE="lo" # 본인 리눅스 네트워크 카드 이름으로 수정 필수!
 
 sudo tc qdisc del dev $INTERFACE root 2>/dev/null
 echo "[+] tc 장애 자동 주입 루프 시작 (종료: Ctrl + C)"
