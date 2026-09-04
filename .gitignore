@@ -1,4 +1,6 @@
 venv/
 __pycache__/
 *.tar.gz
+*.zip
 *.csv.e91
+.current_label
