@@ -14,11 +14,32 @@ DEMO_DATA_DIR = os.path.join(BASE_DIR, "raw_dataset_20260904")
 FEATURES = ["rtt", "loss_flag", "jitter"]
 
 # train_and_benchmark.py / evaluate.py와 동일한 4대 시나리오 라벨 체계
+# action_guide 문구는 database/rule_thresholds.db에 있던 논문 기반 대응 가이드를 그대로 가져옴
 SCENARIO_INFO = {
-    0: {"code": "normal", "name_ko": "정상", "severity": "ok"},
-    1: {"code": "delay", "name_ko": "지연 장애", "severity": "warning"},
-    2: {"code": "loss", "name_ko": "유실 장애", "severity": "danger"},
-    3: {"code": "combined", "name_ko": "복합 장애", "severity": "critical"},
+    0: {
+        "code": "normal",
+        "name_ko": "정상",
+        "severity": "ok",
+        "action_guide": "PLC 로봇 제어 명령 안정 상태. 추가 조치 불필요.",
+    },
+    1: {
+        "code": "delay",
+        "name_ko": "지연 장애",
+        "severity": "warning",
+        "action_guide": "⚠️ 경고: 네트워크 대역폭 포화. 비가동성 트래픽 대역폭 제한(Action) 트리거.",
+    },
+    2: {
+        "code": "loss",
+        "name_ko": "유실 장애",
+        "severity": "danger",
+        "action_guide": "🚨 위험: EMI 오염 수렴. 공정 데이터 유실 방지를 위해 노이즈 감쇄 필터 모드 전환 명령어 송신.",
+    },
+    3: {
+        "code": "combined",
+        "name_ko": "복합 장애",
+        "severity": "critical",
+        "action_guide": "💥 치명적 재난: 네트워크 마비. 공격 IP 차단 및 방화벽 룰셋 강제 적용.",
+    },
 }
 DEMO_SCENARIO_FILES = {
     0: "scenario_A_raw.csv",

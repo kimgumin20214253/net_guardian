@@ -10,20 +10,30 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import type { TelemetryPoint } from "@/lib/api";
 
-const data = [
-  { time: "14:00", rtt: 20, packetLoss: 0, throughput: 98 },
-  { time: "14:01", rtt: 25, packetLoss: 0, throughput: 95 },
-  { time: "14:02", rtt: 40, packetLoss: 1, throughput: 90 },
-  { time: "14:03", rtt: 80, packetLoss: 3, throughput: 75 },
-  { time: "14:04", rtt: 150, packetLoss: 8, throughput: 55 },
-  { time: "14:05", rtt: 45, packetLoss: 1, throughput: 92 },
-];
+function toChartData(points: TelemetryPoint[]) {
+  return points.map((p) => ({
+    time: p.timestamp.slice(11, 19) || p.timestamp,
+    rtt: p.rtt,
+    loss_flag: p.loss_flag,
+    jitter: p.jitter,
+  }));
+}
 
-export default function TrafficChart() {
+export default function TrafficChart({ points }: { points: TelemetryPoint[] }) {
+  const data = toChartData(points);
+
+  if (data.length === 0) {
+    return (
+      <div className="rounded-lg bg-white p-6 text-center text-gray-500 shadow">
+        표시할 데이터가 없습니다.
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-
       {/* RTT */}
       <div className="rounded-lg bg-white p-4 shadow">
         <h2 className="mb-4 font-bold">RTT 실시간 그래프</h2>
@@ -41,6 +51,7 @@ export default function TrafficChart() {
               name="RTT (ms)"
               stroke="#ef4444"
               strokeWidth={3}
+              dot={false}
             />
           </LineChart>
         </ResponsiveContainer>
@@ -54,23 +65,24 @@ export default function TrafficChart() {
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="time" />
-            <YAxis />
+            <YAxis domain={[0, 1]} ticks={[0, 1]} />
             <Tooltip />
             <Legend />
             <Line
-              type="monotone"
-              dataKey="packetLoss"
-              name="Packet Loss (%)"
+              type="stepAfter"
+              dataKey="loss_flag"
+              name="Packet Loss (0/1)"
               stroke="#f59e0b"
               strokeWidth={3}
+              dot={false}
             />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Throughput */}
+      {/* Jitter */}
       <div className="rounded-lg bg-white p-4 shadow">
-        <h2 className="mb-4 font-bold">Throughput 그래프</h2>
+        <h2 className="mb-4 font-bold">Jitter 그래프</h2>
 
         <ResponsiveContainer width="100%" height={250}>
           <LineChart data={data}>
@@ -81,15 +93,15 @@ export default function TrafficChart() {
             <Legend />
             <Line
               type="monotone"
-              dataKey="throughput"
-              name="Throughput (Mbps)"
+              dataKey="jitter"
+              name="Jitter (ms)"
               stroke="#22c55e"
               strokeWidth={3}
+              dot={false}
             />
           </LineChart>
         </ResponsiveContainer>
       </div>
-
     </div>
   );
 }
