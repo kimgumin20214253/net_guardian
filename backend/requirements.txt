@@ -9,3 +9,5 @@ joblib==1.4.*
 matplotlib==3.8.*
 seaborn==0.13.*
 altair==5.3.*
+fastapi==0.115.*
+uvicorn==0.30.*

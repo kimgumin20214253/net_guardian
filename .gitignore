@@ -4,3 +4,8 @@ __pycache__/
 *.zip
 *.csv.e91
 .current_label
+
+# Next.js (app/, components/)
+node_modules/
+.next/
+next-env.d.ts

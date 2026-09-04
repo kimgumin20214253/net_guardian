@@ -1,0 +1,5 @@
+Model,Accuracy (%),Macro F1,Train Time (ms),Single Latency (us)
+Logistic Regression,82.93,0.6358,1486.89,354.23
+Decision Tree,65.16,0.6259,23.99,310.37
+Random Forest,83.41,0.6958,163.51,18750.91
+LightGBM,71.41,0.6371,177.94,671.95

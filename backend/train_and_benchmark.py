@@ -27,7 +27,8 @@ from lightgbm import LGBMClassifier
 # ----------------------------------------------------
 # 1. 데이터 로드 및 라벨링
 # ----------------------------------------------------
-data_dir = "raw_dataset_20260904"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+data_dir = os.path.join(BASE_DIR, "raw_dataset_20260904")
 scenario_map = {
     "scenario_A": 0,  # 정상 (Normal)
     "scenario_B": 1,  # 지연 (Delay)
@@ -36,16 +37,13 @@ scenario_map = {
 }
 
 df_list = []
-search_paths = [os.path.join(data_dir, "*.csv"), "*.csv"]
-found_files = []
-for p in search_paths:
-    found_files.extend(glob.glob(p))
+found_files = glob.glob(os.path.join(data_dir, "*.csv"))
 
 # 4번째 컬럼은 실측 지터가 아니라 수집 스크립트가 넣은 '이상 여부' 하드코딩 플래그(정상=0, 장애=1)였음이
 # 확인되어 is_abnormal_flag로 명명하고 학습 피처에서 제외한다. 대신 rtt 시계열의 연속 차이로 진짜 지터를 계산한다.
 raw_columns = ["timestamp", "rtt", "loss_flag", "is_abnormal_flag"]
 
-for file in set(found_files):
+for file in found_files:
     fname = os.path.basename(file)
     for sc_key, label_val in scenario_map.items():
         if sc_key.lower() in fname.lower():
@@ -142,8 +140,9 @@ print("\n" + "=" * 70)
 print("            [학술대회 논문용 모델 4종 최종 벤치마크 결과]")
 print("=" * 70)
 print(res_df.to_string(index=False))
-res_df.to_csv("benchmark_results.csv", index=False)
-print("\n[*] 'benchmark_results.csv' 저장 완료.")
+benchmark_csv_path = os.path.join(BASE_DIR, "benchmark_results.csv")
+res_df.to_csv(benchmark_csv_path, index=False)
+print(f"\n[*] '{benchmark_csv_path}' 저장 완료.")
 
 # 피처 중요도 시각화 및 저장 (Seaborn warning 수정 반영)
 rf_model = trained_models["Random Forest"]
@@ -156,18 +155,20 @@ plt.figure(figsize=(8, 4))
 sns.barplot(x="Importance", y="Feature", data=feat_df, hue="Feature", palette="viridis", legend=False)
 plt.title("Feature Importance (Random Forest)")
 plt.tight_layout()
-plt.savefig("rf_feature_importance.png", dpi=300)
-print("[*] 'rf_feature_importance.png' 시각화 완료.\n")
+feat_png_path = os.path.join(BASE_DIR, "rf_feature_importance.png")
+plt.savefig(feat_png_path, dpi=300)
+print(f"[*] '{feat_png_path}' 시각화 완료.\n")
 
 # ----------------------------------------------------
 # 6. 최적 모델 저장 (성능 최우수 RF + 초저지연 DT)
 # ----------------------------------------------------
-os.makedirs("models", exist_ok=True)
+models_dir = os.path.join(BASE_DIR, "models")
+os.makedirs(models_dir, exist_ok=True)
 
-rf_path = os.path.join("models", "rf_best_accuracy.pkl")
+rf_path = os.path.join(models_dir, "rf_best_accuracy.pkl")
 joblib.dump(trained_models["Random Forest"], rf_path)
 print(f"[*] '{rf_path}' 저장 완료 (4-class 시나리오 분류, 최고 정확도).")
 
-dt_path = os.path.join("models", "dt_low_latency.pkl")
+dt_path = os.path.join(models_dir, "dt_low_latency.pkl")
 joblib.dump(trained_models["Decision Tree"], dt_path)
 print(f"[*] '{dt_path}' 저장 완료 (4-class 시나리오 분류, 초저지연).")
