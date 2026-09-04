@@ -3,3 +3,9 @@ lightgbm==4.3.*
 marimo==0.6.*
 pandas==2.2.*
 numpy==1.26.*
+pymodbus==3.1.*
+streamlit==1.35.*
+joblib==1.4.*
+matplotlib==3.8.*
+seaborn==0.13.*
+altair==5.3.*

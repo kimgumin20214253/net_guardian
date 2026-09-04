@@ -3,7 +3,6 @@ import csv
 import time
 import numpy as np
 import subprocess
-import re
 import os
 
 # 팀장 지시사항: 입력 피처 5개와 정답 라벨 1개를 명확히 분리 정의
@@ -19,30 +18,39 @@ CSV_FILE = '../data/net_guardian_robust_dataset.csv'
 # data/ 폴더가 없을 경우를 대비한 안전장치 추가
 os.makedirs(os.path.dirname(CSV_FILE), exist_ok=True)
 
-# CSV 초기화 및 헤더 작성
-with open(CSV_FILE, 'w', newline='') as f:
-    writer = csv.DictWriter(f, fieldnames=CSV_HEADER)
-    writer.writeheader()
+# CSV 헤더 작성 (파일이 없을 때만 - 기존 수집 데이터 보존)
+if not os.path.exists(CSV_FILE):
+    with open(CSV_FILE, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_HEADER)
+        writer.writeheader()
 
 print("[+] Modbus 패킷 감시 및 CSV 적립 엔진 가동 시작...")
 
 rtt_history = []
 
+PING_TIMEOUT_MS = 1000.0
+
 def get_current_modbus_rtt():
-    try:
-        # 구민이 환경에 맞는 가상 슬레이브 IP (기본 로컬 호스트)
-        target_ip = "127.0.0.1" 
-        output = subprocess.check_output(["ping", "-c", "1", "-W", "1", target_ip]).decode('utf-8')
-        rtt_match = re.search(r"time=([\d\.]+)\s+ms", output)
-        if rtt_match:
-            return float(rtt_match.group(1))
-    except:
-        pass
-    
-    # DoS 등으로 핑 타임아웃 발생 시 최대 타임아웃 난수 값 주입
-    if get_current_label() == 1:
-        return np.random.uniform(500.0, 1000.0) 
-    return np.random.uniform(3.0, 5.0)
+    # 구민이 환경에 맞는 가상 슬레이브 IP (기본 로컬 호스트)
+    target_ip = "127.0.0.1"
+    if os.name == 'nt':
+        # Windows: -n(횟수), -w(타임아웃, ms 단위)
+        cmd = ["ping", "-n", "1", "-w", str(int(PING_TIMEOUT_MS)), target_ip]
+    else:
+        # Linux/Mac: -c(횟수), -W(타임아웃, 초 단위)
+        cmd = ["ping", "-c", "1", "-W", str(int(PING_TIMEOUT_MS / 1000)), target_ip]
+
+    # ping 응답 문자열은 OS/로캘마다 표기가 달라 파싱이 불안정하므로,
+    # 실측 wall-clock 시간과 종료 코드(성공/실패)로 RTT를 직접 측정
+    start = time.perf_counter()
+    result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    elapsed_ms = (time.perf_counter() - start) * 1000
+
+    if result.returncode == 0:
+        return elapsed_ms
+
+    # 통신 실패(유실/단절) 시: 값을 지어내지 말고 timeout 상한을 실측 한계로 기록
+    return PING_TIMEOUT_MS
 
 def get_current_label():
     try:
