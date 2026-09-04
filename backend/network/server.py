@@ -34,16 +34,19 @@ class ScenarioAwareDataBlock(ModbusSequentialDataBlock):
     측정하는 RTT/타임아웃은 전부 진짜로 걸린 시간이다."""
 
     def _apply_scenario_delay(self):
+        # raw_dataset_20260904 실측 분포에 맞춘 보정치 (한 요청당 setValues/getValues
+        # 두 번 호출되므로, 목표 확률의 제곱근을 호출당 확률로 사용해 합성 확률을 맞춤).
+        # B: RTT 157~550ms, loss 0%.  C: 대부분 정상 + loss_flag 약 2%.
+        # D: 대부분 정상 + loss_flag 약 24% (C보다 훨씬 잦은 유실이 특징).
         scenario = get_current_scenario()
-        if scenario == 'B':          # 지연 장애: 클라이언트 타임아웃 이내로 실제 지연
-            time.sleep(random.uniform(0.15, 0.35))
-        elif scenario == 'C':        # 유실 장애: 타임아웃보다 길게 묶어 실제 유실 유발
-            time.sleep(CLIENT_TIMEOUT_SEC + 0.5)
-        elif scenario == 'D':        # 복합 장애: 지연/유실을 섞어서 재현
-            if random.random() < 0.5:
+        if scenario == 'B':           # 지연 장애: 실측 분포(157~550ms)에 맞춘 실제 지연
+            time.sleep(random.uniform(0.08, 0.22))
+        elif scenario == 'C':         # 유실 장애: 대부분 정상 응답, 드물게(~2%)만 타임아웃
+            if random.random() < 0.01:
                 time.sleep(CLIENT_TIMEOUT_SEC + 0.5)
-            else:
-                time.sleep(random.uniform(0.2, 0.5))
+        elif scenario == 'D':         # 복합 장애: 유실이 훨씬 잦음(~24%), 나머지는 정상 응답
+            if random.random() < 0.13:
+                time.sleep(CLIENT_TIMEOUT_SEC + 0.5)
         # 'A'(정상) 또는 그 외 값: 지연 없음
 
     def getValues(self, address, count=1):
