@@ -1,6 +1,7 @@
 import os
 import glob
 import time
+import joblib
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -40,13 +41,20 @@ found_files = []
 for p in search_paths:
     found_files.extend(glob.glob(p))
 
-raw_columns = ["timestamp", "rtt", "loss_flag", "jitter"]
+# 4번째 컬럼은 실측 지터가 아니라 수집 스크립트가 넣은 '이상 여부' 하드코딩 플래그(정상=0, 장애=1)였음이
+# 확인되어 is_abnormal_flag로 명명하고 학습 피처에서 제외한다. 대신 rtt 시계열의 연속 차이로 진짜 지터를 계산한다.
+raw_columns = ["timestamp", "rtt", "loss_flag", "is_abnormal_flag"]
 
 for file in set(found_files):
     fname = os.path.basename(file)
     for sc_key, label_val in scenario_map.items():
         if sc_key.lower() in fname.lower():
             temp_df = pd.read_csv(file, header=None, names=raw_columns)
+            temp_df["timestamp"] = pd.to_datetime(temp_df["timestamp"])
+            temp_df = temp_df.sort_values("timestamp").reset_index(drop=True)
+            temp_df["rtt"] = pd.to_numeric(temp_df["rtt"], errors="coerce")
+            # 시나리오(파일) 경계를 넘지 않도록 파일별로 직전 샘플 대비 RTT 변동폭을 실측 지터로 계산
+            temp_df["jitter"] = temp_df["rtt"].diff().abs().fillna(0.0)
             temp_df["label"] = label_val
             df_list.append(temp_df)
             print(f"[+] 로드 성공: {fname} -> Label {label_val}")
@@ -62,9 +70,8 @@ print(f"\n[*] 총 데이터 수: {len(df)}행 | 클래스 분포: {df['label'].v
 # ----------------------------------------------------
 # 2. 전처리 및 피처 추출 (수치형 강제 변환)
 # ----------------------------------------------------
-# 문자열/공백으로 오인식된 결측값을 수치형으로 강제 변환
-for col in ["rtt", "loss_flag", "jitter"]:
-    df[col] = pd.to_numeric(df[col], errors='coerce')
+# 문자열/공백으로 오인식된 결측값을 수치형으로 강제 변환 (rtt/jitter는 파일별 로드 단계에서 이미 처리됨)
+df["loss_flag"] = pd.to_numeric(df["loss_flag"], errors='coerce')
 
 feature_candidates = [
     "rtt", "loss_flag", "jitter",
@@ -151,3 +158,16 @@ plt.title("Feature Importance (Random Forest)")
 plt.tight_layout()
 plt.savefig("rf_feature_importance.png", dpi=300)
 print("[*] 'rf_feature_importance.png' 시각화 완료.\n")
+
+# ----------------------------------------------------
+# 6. 최적 모델 저장 (성능 최우수 RF + 초저지연 DT)
+# ----------------------------------------------------
+os.makedirs("models", exist_ok=True)
+
+rf_path = os.path.join("models", "rf_best_accuracy.pkl")
+joblib.dump(trained_models["Random Forest"], rf_path)
+print(f"[*] '{rf_path}' 저장 완료 (4-class 시나리오 분류, 최고 정확도).")
+
+dt_path = os.path.join("models", "dt_low_latency.pkl")
+joblib.dump(trained_models["Decision Tree"], dt_path)
+print(f"[*] '{dt_path}' 저장 완료 (4-class 시나리오 분류, 초저지연).")
