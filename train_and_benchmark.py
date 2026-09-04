@@ -123,7 +123,7 @@ for name, model in models.items():
         "Accuracy (%)": round(acc * 100, 2),
         "Macro F1": round(f1, 4),
         "Train Time (ms)": round(train_time, 2),
-        "Single Latency (µs)": round(np.mean(sample_latencies), 2)
+        "Single Latency (us)": round(np.mean(sample_latencies), 2)
     })
     trained_models[name] = model
 
