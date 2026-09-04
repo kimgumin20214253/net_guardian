@@ -13,7 +13,7 @@ from pymodbus.datastore import ModbusSlaveContext, ModbusServerContext
 
 def run_modbus_server():
     print("==========================================")
-    print("🤖 🛠️ [산업 인프라] Modbus TCP 서버 가동 시작")
+    print("[산업 인프라] Modbus TCP 서버 가동 시작")
     print("==========================================")
     
     # Holding Register(hr) 100개 생성
@@ -30,14 +30,14 @@ def run_modbus_server():
     identity.ProductCode = 'NG-Server-v1.0'
     identity.ProductName = 'Industrial Security Modbus Server'
     
-    print("📡 서버가 포트 [5020]번에서 대기 중입니다...")
-    print("⚠️ 종료: Ctrl + C")
-    
+    print("서버가 포트 [5020]번에서 대기 중입니다...")
+    print("종료: Ctrl + C")
+
     try:
         # 비동기 방식으로 서버 실행
         asyncio.run(StartAsyncTcpServer(context=context, identity=identity, address=("127.0.0.1", 5020)))
     except Exception as e:
-        print(f"❌ 서버 기동 오류: {e}")
+        print(f"[오류] 서버 기동 오류: {e}")
 
 if __name__ == "__main__":
     run_modbus_server()
