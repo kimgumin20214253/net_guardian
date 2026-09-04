@@ -1,105 +1,76 @@
-import csv
-
 import os
+import csv
+from datetime import datetime
 
-import time
+# 기본 경로
+BASE_DATA_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    'raw_dataset_20260904'
+)
+
+os.makedirs(BASE_DATA_DIR, exist_ok=True)
+
+# 각 시나리오별 파일 경로
+SCENARIO_FILES = {
+    'A': os.path.join(BASE_DATA_DIR, 'scenario_A_raw.csv'),
+    'B': os.path.join(BASE_DATA_DIR, 'scenario_B_raw.csv'),
+    'C': os.path.join(BASE_DATA_DIR, 'scenario_C_raw.csv'),
+    'D': os.path.join(BASE_DATA_DIR, 'scenario_D_raw.csv')
+}
+
+HEADERS = ['time', 'rtt', 'loss', 'status']
 
 
+def _initialize_csv_file(filepath):
+    """CSV 파일 생성 (헤더 포함)"""
+    if not os.path.exists(filepath):
+        with open(filepath, 'w', newline='', encoding='utf-8') as f:
+            csv.writer(f).writerow(HEADERS)
 
-def _save_to_csv(filename, rtt, loss, status):
 
-    """
-
-    [내부 함수] 지정된 파일명으로 데이터를 안전하게 저장하는 공통 함수
-
-    """
-
-    # 1. 상위 폴더(Net_Guardian/)로 나가서 data/ 폴더를 가리키게 함
-    data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
-    os.makedirs(data_dir, exist_ok=True)
+def _save_to_csv(scenario, rtt, loss, status):
+    """공통 저장 함수"""
+    if scenario not in SCENARIO_FILES:
+        return
     
-    file_path = os.path.join(data_dir, filename)
-
+    filepath = SCENARIO_FILES[scenario]
+    _initialize_csv_file(filepath)
     
-
-    # 2. 파일이 이미 존재하는지 체크 (헤더 생성을 위함)
-
-    file_exists = os.path.isfile(file_path)
-
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
-
-    # 3. 현재 기록 시간 타임스탬프 생성
-
-    timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-
+    # RTT 값 처리
+    if isinstance(rtt, str) and rtt.strip() == '':
+        rtt_value = 5000
+    else:
+        try:
+            rtt_value = float(rtt)
+        except:
+            rtt_value = 5000
     
-
-    # 4. CSV 파일 이어쓰기(Append mode) 열기
-
-    with open(file_path, mode='a', newline='', encoding='utf-8') as f:
-
-        writer = csv.writer(f)
-
-        
-
-        # 파일이 처음 생성되는 상황이라면 상단 헤더 row 추가
-
-        if not file_exists:
-
-            writer.writerow(['time', 'rtt', 'loss', 'status'])
-
-            
-
-        # 데이터 한 줄 누적 저장
-
-        writer.writerow([timestamp, rtt, loss, status])
+    # CSV 저장
+    try:
+        with open(filepath, 'a', newline='', encoding='utf-8') as f:
+            csv.writer(f).writerow([timestamp, rtt_value, loss, status])
+    except Exception as e:
+        print(f"❌ 오류: {e}")
 
 
-
-
-
-# =========================================================================
-
-# 외부(client.py)에서 상황별로 호출할 공통 인터페이스 함수들
-
-# =========================================================================
-
-
-
+# 시나리오별 함수
 def save_normal_data(rtt, loss, status):
-
-    """정상 시나리오 데이터 저장 함수"""
-
-    _save_to_csv("raw_normal.csv", rtt, loss, status)
-
-    print(f"[데이터 기록] 정상 시나리오 기록 완료 -> data/raw_normal.csv")
-
+    """시나리오 A 저장"""
+    _save_to_csv('A', rtt, loss, status)
 
 
 def save_delay_data(rtt, loss, status):
-
-    """지연 장애 시나리오 데이터 저장 함수"""
-
-    _save_to_csv("raw_delay.csv", rtt, loss, status)
-
-    print(f"[데이터 기록] 지연 장애 시나리오 기록 완료 -> data/raw_delay.csv")
-
+    """시나리오 B 저장"""
+    _save_to_csv('B', rtt, loss, status)
 
 
 def save_loss_data(rtt, loss, status):
-
-    """패킷 손실 시나리오 데이터 저장 함수"""
-
-    _save_to_csv("raw_loss.csv", rtt, loss, status)
-
-    print(f"[데이터 기록] 패킷 손실 시나리오 기록 완료 -> data/raw_loss.csv")
-
+    """시나리오 C 저장"""
+    _save_to_csv('C', rtt, loss, status)
 
 
 def save_delay_loss_data(rtt, loss, status):
-
-    """지연 및 손실 복합 장애 시나리오 데이터 저장 함수"""
-
-    _save_to_csv("raw_delay_loss.csv", rtt, loss, status)
-
-    print(f"[데이터 기록] 복합 장애 시나리오 기록 완료 -> data/raw_delay_loss.csv")
+    """시나리오 D 저장"""
+    _save_to_csv('D', rtt, loss, status)
