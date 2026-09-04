@@ -2,9 +2,24 @@
 
 import { useEffect, useState } from "react";
 import TrafficChart from "@/components/TrafficChart";
-import { fetchTelemetry, type TelemetryResponse, type Severity } from "@/lib/api";
+import {
+  fetchTelemetry,
+  fetchScenario,
+  setScenario as apiSetScenario,
+  type TelemetryResponse,
+  type Severity,
+  type ScenarioCode,
+  type ScenarioStatus,
+} from "@/lib/api";
 
 const POLL_INTERVAL_MS = 3000;
+
+const SCENARIO_BUTTONS: { code: ScenarioCode; label: string }[] = [
+  { code: "A", label: "정상" },
+  { code: "B", label: "지연 장애" },
+  { code: "C", label: "유실 장애" },
+  { code: "D", label: "복합 장애" },
+];
 
 const SEVERITY_TEXT_COLOR: Record<Severity, string> = {
   ok: "text-green-600",
@@ -32,15 +47,21 @@ export default function Dashboard({ initial }: { initial: TelemetryResponse | nu
   const [error, setError] = useState<string | null>(
     initial ? null : "API 서버(localhost:8000)에 연결할 수 없습니다. backend/api 서버를 먼저 실행하세요."
   );
+  const [scenario, setScenarioState] = useState<ScenarioStatus | null>(null);
+  const [pendingScenario, setPendingScenario] = useState<ScenarioCode | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       try {
-        const res = await fetchTelemetry(50);
+        const [telemetry, scenarioStatus] = await Promise.all([
+          fetchTelemetry(50),
+          fetchScenario(),
+        ]);
         if (!cancelled) {
-          setData(res);
+          setData(telemetry);
+          setScenarioState(scenarioStatus);
           setError(null);
         }
       } catch {
@@ -50,12 +71,26 @@ export default function Dashboard({ initial }: { initial: TelemetryResponse | nu
       }
     }
 
+    load();
     const id = setInterval(load, POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
       clearInterval(id);
     };
   }, []);
+
+  async function handleScenarioClick(code: ScenarioCode) {
+    setPendingScenario(code);
+    try {
+      const status = await apiSetScenario(code);
+      setScenarioState(status);
+      setError(null);
+    } catch {
+      setError("API 서버(localhost:8000)에 연결할 수 없습니다. backend/api 서버를 먼저 실행하세요.");
+    } finally {
+      setPendingScenario(null);
+    }
+  }
 
   const points = data?.points ?? [];
   const latest = points[points.length - 1];
@@ -75,6 +110,35 @@ export default function Dashboard({ initial }: { initial: TelemetryResponse | nu
           {error}
         </div>
       )}
+
+      {/* 장애 시나리오 제어 */}
+      <div className="mb-8 rounded-lg bg-white p-6 shadow">
+        <h2 className="mb-1 text-xl font-semibold">장애 시나리오 주입</h2>
+        <p className="mb-4 text-sm text-gray-500">
+          버튼을 누르면 Modbus 서버가 실제로 해당 조건(지연/유실)을 재현하고, 그 결과를 AI가 실시간으로 진단합니다.
+          (network/server.py + packet_analyzer.py가 켜져 있어야 효과가 보입니다)
+        </p>
+        <div className="flex flex-wrap gap-3">
+          {SCENARIO_BUTTONS.map(({ code, label }) => {
+            const isActive = scenario?.scenario === code;
+            const isPending = pendingScenario === code;
+            return (
+              <button
+                key={code}
+                onClick={() => handleScenarioClick(code)}
+                disabled={pendingScenario !== null}
+                className={`rounded-md px-4 py-2 font-semibold shadow transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  isActive
+                    ? "bg-slate-800 text-white"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                {isPending ? "전환 중..." : `${code} · ${label}`}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         {/* 상태 카드 */}

@@ -39,3 +39,33 @@ export async function fetchTelemetry(
   }
   return res.json();
 }
+
+export type ScenarioCode = "A" | "B" | "C" | "D";
+
+export type ScenarioStatus = {
+  scenario: ScenarioCode;
+  code: string;
+  name_ko: string;
+  severity: Severity;
+  action_guide: string;
+};
+
+export async function fetchScenario(): Promise<ScenarioStatus> {
+  const res = await fetch(`${API_BASE}/scenario`, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`API 응답 오류 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function setScenario(scenario: ScenarioCode): Promise<ScenarioStatus> {
+  const res = await fetch(`${API_BASE}/scenario`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scenario }),
+  });
+  if (!res.ok) {
+    throw new Error(`API 응답 오류 (${res.status})`);
+  }
+  return res.json();
+}

@@ -47,6 +47,10 @@ DEMO_SCENARIO_FILES = {
     2: "scenario_C_raw.csv",
     3: "scenario_D_raw.csv",
 }
+# network/server.py, packet_analyzer.py와 동일한 매핑 - 여기 쓰는 값을 그대로
+# .current_label에 적으면 두 스크립트가 즉시 읽어서 지연/유실을 실제로 재현한다.
+SCENARIO_LABEL_MAP = {"A": 0, "B": 1, "C": 2, "D": 3}
+CURRENT_LABEL_PATH = os.path.join(BASE_DIR, ".current_label")
 
 app = FastAPI(title="Net Guardian Model API")
 
@@ -91,6 +95,35 @@ def health():
 @app.post("/predict")
 def predict(req: PredictRequest):
     return build_prediction(req.model_dump())
+
+
+class ScenarioRequest(BaseModel):
+    scenario: str = Field(..., description="A(정상)/B(지연)/C(유실)/D(복합) 중 하나")
+
+
+def _read_current_scenario() -> str:
+    try:
+        with open(CURRENT_LABEL_PATH) as f:
+            raw = f.read().strip().upper()
+    except FileNotFoundError:
+        raw = "A"
+    return raw if raw in SCENARIO_LABEL_MAP else "A"
+
+
+@app.get("/scenario")
+def get_scenario():
+    scenario = _read_current_scenario()
+    return {"scenario": scenario, **SCENARIO_INFO[SCENARIO_LABEL_MAP[scenario]]}
+
+
+@app.post("/scenario")
+def set_scenario(req: ScenarioRequest):
+    scenario = req.scenario.strip().upper()
+    if scenario not in SCENARIO_LABEL_MAP:
+        raise HTTPException(status_code=400, detail="scenario는 A, B, C, D 중 하나여야 합니다.")
+    with open(CURRENT_LABEL_PATH, "w") as f:
+        f.write(scenario)
+    return {"scenario": scenario, **SCENARIO_INFO[SCENARIO_LABEL_MAP[scenario]]}
 
 
 def _load_demo_telemetry(n: int) -> pd.DataFrame:
