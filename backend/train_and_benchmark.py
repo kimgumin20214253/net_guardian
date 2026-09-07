@@ -83,6 +83,17 @@ print(f"[*] 학습 사용 피처: {selected_features}")
 X = df[selected_features].replace([np.inf, -np.inf], np.nan).fillna(0)
 y = df["label"]
 
+# (피처+라벨) 완전 중복 행 제거 - 초 단위 타임스탬프 해상도와 빠른 폴링 주기 때문에
+# 안정된 구간에서 동일한 값이 반복 기록되는 경우가 있음. 분할 전에 제거하지 않으면
+# 같은 행이 학습셋과 검증셋에 동시에 들어가 검증 점수가 부풀려지는 누수가 발생함.
+combo = pd.concat([X, y], axis=1)
+before_dedup = len(combo)
+combo = combo.drop_duplicates().reset_index(drop=True)
+removed = before_dedup - len(combo)
+print(f"[*] (피처+라벨) 완전 중복 {removed}행 제거 ({removed/before_dedup*100:.1f}%) -> 최종 {len(combo)}행")
+X = combo[selected_features]
+y = combo["label"]
+
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
