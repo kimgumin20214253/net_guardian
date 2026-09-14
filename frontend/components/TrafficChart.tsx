@@ -8,21 +8,36 @@ import {
   Tooltip,
   CartesianGrid,
   Legend,
+  ReferenceLine,
   ResponsiveContainer,
 } from "recharts";
 import type { TelemetryPoint } from "@/lib/api";
 
+function toChartTime(timestamp: string) {
+  return timestamp.slice(11, 19) || timestamp;
+}
+
 function toChartData(points: TelemetryPoint[]) {
   return points.map((p) => ({
-    time: p.timestamp.slice(11, 19) || p.timestamp,
+    time: toChartTime(p.timestamp),
     rtt: p.rtt,
     loss_flag: p.loss_flag,
     jitter: p.jitter,
   }));
 }
 
-export default function TrafficChart({ points }: { points: TelemetryPoint[] }) {
+export default function TrafficChart({
+  points,
+  injectionTime,
+}: {
+  points: TelemetryPoint[];
+  /** 시나리오를 주입한 시각(원본 timestamp 형식). 넘기면 그래프에 "주입 시점" 세로선을 표시한다. */
+  injectionTime?: string | null;
+}) {
   const data = toChartData(points);
+  const injectionX = injectionTime ? toChartTime(injectionTime) : null;
+  // 폴링 윈도우(최근 50건)에서 이미 밀려나간 주입 시점은 표시하지 않는다 (엉뚱한 위치에 선이 남는 것 방지)
+  const showInjectionLine = injectionX !== null && data.some((d) => d.time === injectionX);
 
   if (data.length === 0) {
     return (
@@ -53,6 +68,9 @@ export default function TrafficChart({ points }: { points: TelemetryPoint[] }) {
               strokeWidth={3}
               dot={false}
             />
+            {showInjectionLine && (
+              <ReferenceLine x={injectionX!} stroke="#6366f1" strokeDasharray="4 4" label={{ value: "주입", position: "insideTopLeft", fill: "#6366f1", fontSize: 11 }} />
+            )}
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -76,6 +94,9 @@ export default function TrafficChart({ points }: { points: TelemetryPoint[] }) {
               strokeWidth={3}
               dot={false}
             />
+            {showInjectionLine && (
+              <ReferenceLine x={injectionX!} stroke="#6366f1" strokeDasharray="4 4" label={{ value: "주입", position: "insideTopLeft", fill: "#6366f1", fontSize: 11 }} />
+            )}
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -99,6 +120,9 @@ export default function TrafficChart({ points }: { points: TelemetryPoint[] }) {
               strokeWidth={3}
               dot={false}
             />
+            {showInjectionLine && (
+              <ReferenceLine x={injectionX!} stroke="#6366f1" strokeDasharray="4 4" label={{ value: "주입", position: "insideTopLeft", fill: "#6366f1", fontSize: 11 }} />
+            )}
           </LineChart>
         </ResponsiveContainer>
       </div>
