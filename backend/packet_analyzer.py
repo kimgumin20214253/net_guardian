@@ -8,7 +8,8 @@ LABEL = ['label']
 CSV_HEADER = ['timestamp'] + FEATURES + LABEL
 
 # data/ 버전의 구(5피처) net_guardian_robust_dataset.csv와 스키마가 다르므로 별도 파일로 분리
-CSV_FILE = os.path.join('data', 'net_guardian_scenario_dataset.csv')
+# PA_OUTPUT_FILE 환경변수로 출력 파일명을 바꿀 수 있음 (기본값 유지 시 팀원/기존 실행 방식과 100% 동일)
+CSV_FILE = os.path.join('data', os.environ.get('PA_OUTPUT_FILE', 'net_guardian_scenario_dataset.csv'))
 os.makedirs(os.path.dirname(CSV_FILE), exist_ok=True)
 
 # CSV 헤더 작성 (파일이 없을 때만 - 기존 수집 데이터 보존)
@@ -30,9 +31,11 @@ def get_current_label():
         return 0
 
 async def main():
-    client = AsyncModbusTcpClient('127.0.0.1', port=5020, timeout=1)
+    # PA_MODBUS_HOST 환경변수로 접속 대상을 바꿀 수 있음 (기본값 127.0.0.1 유지 시 기존 동작과 100% 동일)
+    modbus_host = os.environ.get('PA_MODBUS_HOST', '127.0.0.1')
+    client = AsyncModbusTcpClient(modbus_host, port=5020, timeout=1)
     await client.connect()
-    print("[+] Modbus 감시 + CSV 적립 엔진 시작 (종료: Ctrl+C)")
+    print(f"[+] Modbus 감시 + CSV 적립 엔진 시작 (대상: {modbus_host}:5020, 출력: {CSV_FILE}, 종료: Ctrl+C)")
 
     prev_rtt = None
     try:

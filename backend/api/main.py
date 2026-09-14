@@ -7,6 +7,18 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+# 코파일럿(RAG 챗봇)은 실시간 진단 경로와 완전히 독립된 보조 기능이다.
+# 여기서 import 에러가 나더라도(패키지 누락, 지식베이스 JSON 문제 등) 기존 /predict,
+# /telemetry/latest, /scenario 등 핵심 엔드포인트는 절대 영향받지 않도록 격리한다.
+try:
+    import copilot as copilot_module
+    COPILOT_AVAILABLE = True
+    COPILOT_IMPORT_ERROR = None
+except Exception as e:  # noqa: BLE001 - 코파일럿 로드 실패를 절대 서버 기동 실패로 전파하지 않음
+    copilot_module = None
+    COPILOT_AVAILABLE = False
+    COPILOT_IMPORT_ERROR = str(e)
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_PATH = os.path.join(BASE_DIR, "models", "rf_best_accuracy.pkl")
 LIVE_DATA_PATH = os.path.join(BASE_DIR, "data", "net_guardian_scenario_dataset.csv")
@@ -145,6 +157,83 @@ def _load_demo_telemetry(n: int) -> pd.DataFrame:
     if not frames:
         return pd.DataFrame(columns=["timestamp", "rtt", "loss_flag", "jitter", "true_label"])
     return pd.concat(frames, ignore_index=True)
+
+
+class CopilotChatRequest(BaseModel):
+    query: str = Field(..., description="운영자 질문")
+    current_fault: str | None = Field(None, description="현재 진단 상태 코드 (A/B/C/D), 있으면 검색 정확도 향상")
+    rtt: float | None = Field(None, description="질문 시점의 실측 RTT(ms) - 있으면 답변에 반영")
+    loss_flag: int | None = Field(None, description="질문 시점의 실측 손실 플래그(0/1)")
+    jitter: float | None = Field(None, description="질문 시점의 실측 Jitter(ms)")
+    confidence: float | None = Field(None, description="질문 시점의 AI 진단 신뢰도(0~1)")
+
+
+@app.post("/api/copilot/chat")
+async def copilot_chat(req: CopilotChatRequest):
+    if not COPILOT_AVAILABLE:
+        # 실시간 진단 경로와 무관한 보조 기능이므로, 로드 실패는 503으로만 알리고
+        # 나머지 엔드포인트(/predict, /telemetry/latest, /scenario)는 정상 동작한다.
+        raise HTTPException(
+            status_code=503,
+            detail=f"코파일럿을 사용할 수 없습니다: {COPILOT_IMPORT_ERROR}",
+        )
+    readings = {
+        "rtt": req.rtt,
+        "loss_flag": req.loss_flag,
+        "jitter": req.jitter,
+        "confidence": req.confidence,
+    }
+    return await copilot_module.answer_query(req.query, req.current_fault, readings)
+
+
+@app.get("/api/copilot/guides")
+def copilot_guides():
+    """지식베이스 문서 4개를 한 번에 반환 (매뉴얼 브라우저 화면용, 검색/LLM 없이 결정론적 조회)."""
+    if not COPILOT_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail=f"코파일럿을 사용할 수 없습니다: {COPILOT_IMPORT_ERROR}",
+        )
+    return {"documents": copilot_module.DOCUMENTS, "meta": copilot_module.KB_META}
+
+
+@app.get("/api/copilot/guide/{scenario}")
+def copilot_guide(scenario: str):
+    if not COPILOT_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail=f"코파일럿을 사용할 수 없습니다: {COPILOT_IMPORT_ERROR}",
+        )
+    doc = copilot_module.get_guide_for_scenario(scenario)
+    if not doc:
+        raise HTTPException(status_code=404, detail="해당 시나리오의 매뉴얼을 찾을 수 없습니다.")
+    return doc
+
+
+@app.get("/stats/summary")
+def stats_summary():
+    """실제 수집 CSV 전체를 집계한 누적 통계 (지어낸 수치 없이, 저장된 데이터 그대로 계산)."""
+    if not os.path.exists(LIVE_DATA_PATH):
+        return {"source": "demo", "total_count": 0, "by_label": {}, "avg_rtt": None,
+                "first_timestamp": None, "last_timestamp": None}
+
+    df = pd.read_csv(LIVE_DATA_PATH)
+    if df.empty:
+        return {"source": "live", "total_count": 0, "by_label": {}, "avg_rtt": None,
+                "first_timestamp": None, "last_timestamp": None}
+
+    by_label = {
+        SCENARIO_INFO[label]["name_ko"]: int((df["label"] == label).sum())
+        for label in SCENARIO_INFO
+    }
+    return {
+        "source": "live",
+        "total_count": int(len(df)),
+        "by_label": by_label,
+        "avg_rtt": round(float(df["rtt"].mean()), 1),
+        "first_timestamp": str(df["timestamp"].iloc[0]),
+        "last_timestamp": str(df["timestamp"].iloc[-1]),
+    }
 
 
 @app.get("/telemetry/latest")

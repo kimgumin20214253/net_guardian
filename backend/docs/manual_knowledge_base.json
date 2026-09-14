@@ -1,0 +1,45 @@
+{
+  "meta": {
+    "standard": "NIST SP 800-82",
+    "status_note": "Rev.2는 2023-09-28 철회되어 Rev.3(Guide to Operational Technology (OT) Security)로 대체되었습니다. 아래 §번호는 Rev.2 기준이며, 조직/구조 참고용 인용입니다.",
+    "content_note": "symptom/root_cause는 인용된 §의 취지를 반영한 팀 정의 설명이며, action_guide/cli_command는 표준 원문의 축자 인용이 아니라 팀이 정리한 일반적인 대응 절차입니다. reference는 '참고 출처'이지 '원문 발췌'가 아닙니다."
+  },
+  "documents": [
+    {
+      "doc_id": "ICS-NET-01",
+      "scenario": "지연 장애 (Delay)",
+      "reference": "NIST SP 800-82 Rev.2 §5.8.11 SCADA and Industrial Protocols (참고, 세부 절차는 팀 정의)",
+      "symptom": "RTT 급증, Jitter 불안정, Modbus 제어 루프 응답 지연",
+      "root_cause": "비인가 트래픽(대용량 파일 전송, 비업무 트래픽)으로 인한 스위치 버퍼 큐 포화 추정",
+      "action_guide": "1. 제어망 스위치 포트별 출력 드롭(Output Drops) 카운터 점검\n2. Modbus TCP 502 포트 트래픽에 우선순위 CoS/QoS 정책 적용\n3. 비인가 비업무 트래픽 대역폭 제한 조치",
+      "cli_command": "tc qdisc change dev eth0 root tbf rate 1mbit burst 32kbit latency 400ms"
+    },
+    {
+      "doc_id": "ICS-NET-02",
+      "scenario": "유실 장애 (Loss)",
+      "reference": "NIST SP 800-82 Rev.2 §6.2.11.3 Cabling (참고, 세부 절차는 팀 정의)",
+      "symptom": "패킷 손실률(loss_flag) 급증, Modbus 응답 타임아웃",
+      "root_cause": "인버터/모터 가동에 따른 전자기 간섭(EMI) 또는 비차폐 케이블/접지 불량으로 인한 신호 열화 추정",
+      "action_guide": "1. 스위치 인터페이스의 CRC/FCS 에러 누적 카운트 확인\n2. 차폐 케이블(STP) 및 접지 체결 상태 점검\n3. 가능하면 광케이블(Fiber) 또는 동축 케이블로 대체 검토",
+      "cli_command": "ip -s link show eth0"
+    },
+    {
+      "doc_id": "ICS-NET-03",
+      "scenario": "복합 장애 (Combined)",
+      "reference": "NIST SP 800-82 Rev.2 §5.6 Recommended Defense-in-Depth Architecture, §5.13 Redundancy and Fault Tolerance (참고, 세부 절차는 팀 정의)",
+      "symptom": "지연 급증과 패킷 손실 동시 발생, 통신 간헐적 단절",
+      "root_cause": "배선 손상, 반복적 링크 단절(flapping), 또는 다중 장애 요인 중첩 추정",
+      "action_guide": "1. 이중화 경로/링 토폴로지 자동 절체 동작 여부 확인\n2. 스위치 로그에서 링크 단절(flapping) 이력 점검\n3. 필요 시 수동 운전 모드 전환 절차 준비",
+      "cli_command": "cat /var/log/syslog | grep -E 'link down|flapping'"
+    },
+    {
+      "doc_id": "ICS-NET-04",
+      "scenario": "정상 상태 (Normal)",
+      "reference": "NIST SP 800-82 Rev.2 §5.16 Monitoring, Logging, and Auditing (참고, 세부 절차는 팀 정의)",
+      "symptom": "RTT/손실/지터가 실측 기준 정상 범위 내 유지",
+      "root_cause": "특이사항 없음",
+      "action_guide": "1. 정상 통신 상태 기준선(baseline) 지속 로깅\n2. 정기적인 통신 감사 로그 보관",
+      "cli_command": "ping -c 5 -i 0.2 127.0.0.1"
+    }
+  ]
+}

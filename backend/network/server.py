@@ -82,7 +82,9 @@ def run_modbus_server():
 
     try:
         # 비동기 방식으로 서버 실행
-        asyncio.run(StartAsyncTcpServer(context=context, identity=identity, address=("127.0.0.1", 5020)))
+        # 0.0.0.0 바인딩은 127.0.0.1도 그대로 받아들이는 상위 집합이라 기존 로컬 데모 동작에는 영향 없음.
+        # 우분투 VM 등 외부(다른 호스트)에서도 접속할 수 있게 하기 위해 특정 IP가 아닌 모든 인터페이스로 바인딩.
+        asyncio.run(StartAsyncTcpServer(context=context, identity=identity, address=("0.0.0.0", 5020)))
     except Exception as e:
         print(f"[오류] 서버 기동 오류: {e}")
 
