@@ -50,7 +50,7 @@ for file in sorted(glob.glob(os.path.join(DATA_DIR, "*.csv"))):
         if sc_key.lower() in fname.lower():
             temp_df = pd.read_csv(file, header=None, names=raw_columns)
             temp_df["timestamp"] = pd.to_datetime(temp_df["timestamp"])
-            temp_df = temp_df.sort_values("timestamp").reset_index(drop=True)
+            temp_df = temp_df.sort_values("timestamp", kind="stable").reset_index(drop=True)
             temp_df["rtt"] = pd.to_numeric(temp_df["rtt"], errors="coerce")
             # 시나리오(파일) 경계를 넘지 않도록 파일별로 직전 샘플 대비 RTT 변동폭을 실측 지터로 계산
             temp_df["jitter"] = temp_df["rtt"].diff().abs().fillna(0.0)

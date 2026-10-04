@@ -49,7 +49,9 @@ for file in found_files:
         if sc_key.lower() in fname.lower():
             temp_df = pd.read_csv(file, header=None, names=raw_columns)
             temp_df["timestamp"] = pd.to_datetime(temp_df["timestamp"])
-            temp_df = temp_df.sort_values("timestamp").reset_index(drop=True)
+            # timestamp가 초 단위라 같은 초에 여러 행이 있음 -> stable 정렬로 파일의 실제 수집 순서를 유지해야
+            # 아래 jitter(연속 RTT 차이)가 진짜 연속 샘플 간 차이가 됨 (기본 정렬은 같은 초 내 순서를 섞음)
+            temp_df = temp_df.sort_values("timestamp", kind="stable").reset_index(drop=True)
             temp_df["rtt"] = pd.to_numeric(temp_df["rtt"], errors="coerce")
             # 시나리오(파일) 경계를 넘지 않도록 파일별로 직전 샘플 대비 RTT 변동폭을 실측 지터로 계산
             temp_df["jitter"] = temp_df["rtt"].diff().abs().fillna(0.0)
@@ -124,11 +126,17 @@ for name, model in models.items():
     acc = accuracy_score(y_test, y_pred)
     f1 = f1_score(y_test, y_pred, average="macro")
 
-    # 100개 단건 순회 추론 지연시간 (마이크로초)
+    # 단건 순회 추론 지연시간 (마이크로초)
+    # - n_jobs=-1 그대로 재면 predict 호출마다 스레드 풀 기동 비용이 붙어 RF가 약 10배 부풀려지므로 1로 고정
+    # - 워밍업 100회 후 2000회 측정, 튀는 값에 강한 중앙값과 꼬리 지연(p99)을 함께 보고
+    if hasattr(model, "n_jobs"):
+        model.set_params(n_jobs=1)
+    bench_rows = [X_test.iloc[[i]] for i in range(500)]
+    for i in range(100):
+        model.predict(bench_rows[i % len(bench_rows)])
     sample_latencies = []
-    bench_samples = X_test.iloc[:100]
-    for idx in range(len(bench_samples)):
-        single_pkt = bench_samples.iloc[[idx]]
+    for i in range(2000):
+        single_pkt = bench_rows[i % len(bench_rows)]
         inf_start = time.perf_counter()
         _ = model.predict(single_pkt)
         inf_end = time.perf_counter()
@@ -139,7 +147,8 @@ for name, model in models.items():
         "Accuracy (%)": round(acc * 100, 2),
         "Macro F1": round(f1, 4),
         "Train Time (ms)": round(train_time, 2),
-        "Single Latency (us)": round(np.mean(sample_latencies), 2)
+        "Single Latency Median (us)": round(np.median(sample_latencies), 2),
+        "Single Latency p99 (us)": round(np.percentile(sample_latencies, 99), 2)
     })
     trained_models[name] = model
 
@@ -169,6 +178,26 @@ plt.tight_layout()
 feat_png_path = os.path.join(BASE_DIR, "rf_feature_importance.png")
 plt.savefig(feat_png_path, dpi=300)
 print(f"[*] '{feat_png_path}' 시각화 완료.\n")
+
+# 논문용 컨퓨전 매트릭스: 학습에 쓰지 않은 테스트셋(20%) 기준 (evaluate.py는 전체 데이터 기준이라 인용 불가)
+from sklearn.metrics import confusion_matrix, classification_report
+scenario_names = ['Normal(0)', 'Delay(1)', 'Loss(2)', 'Combined(3)']
+rf_test_pred = rf_model.predict(X_test)
+cm = confusion_matrix(y_test, rf_test_pred, labels=[0, 1, 2, 3])
+print("[*] Random Forest 테스트셋 컨퓨전 매트릭스 (행=실제, 열=예측)")
+print(pd.DataFrame(cm, index=scenario_names, columns=scenario_names).to_string())
+print(classification_report(y_test, rf_test_pred, labels=[0, 1, 2, 3], target_names=scenario_names, digits=4, zero_division=0))
+pd.DataFrame(cm, index=scenario_names, columns=scenario_names).to_csv(os.path.join(BASE_DIR, "rf_confusion_matrix_test.csv"))
+
+plt.figure(figsize=(7, 6))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False, xticklabels=scenario_names, yticklabels=scenario_names)
+plt.title('Random Forest - 4-Class Confusion Matrix (Test Set)', fontsize=12, pad=15)
+plt.ylabel('Actual Scenario', fontsize=10)
+plt.xlabel('Predicted Scenario', fontsize=10)
+plt.tight_layout()
+cm_png_path = os.path.join(BASE_DIR, "rf_confusion_matrix_test.png")
+plt.savefig(cm_png_path, dpi=300)
+print(f"[*] '{cm_png_path}' 저장 완료.\n")
 
 # ----------------------------------------------------
 # 6. 최적 모델 저장 (성능 최우수 RF + 초저지연 DT)

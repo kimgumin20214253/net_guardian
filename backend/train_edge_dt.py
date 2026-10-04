@@ -42,7 +42,7 @@ def load_with_window_features(window):
             if sc_key.lower() in fname.lower():
                 t = pd.read_csv(file, header=None, names=raw_columns)
                 t["timestamp"] = pd.to_datetime(t["timestamp"])
-                t = t.sort_values("timestamp").reset_index(drop=True)
+                t = t.sort_values("timestamp", kind="stable").reset_index(drop=True)
                 t["rtt"] = pd.to_numeric(t["rtt"], errors="coerce")
                 t["loss_flag"] = pd.to_numeric(t["loss_flag"], errors="coerce")
                 t["jitter"] = t["rtt"].diff().abs().fillna(0.0)

@@ -1,0 +1,5 @@
+Model,Median (us),Median Std across runs (us),Mean (us),p95 (us),p99 (us),Max (us)
+Logistic Regression,362.5,2.1,396.2,554.7,915.5,9020.6
+Decision Tree,312.9,6.3,352.5,531.9,907.6,2429.5
+Random Forest,1988.4,1.2,2121.7,2889.4,3898.3,7264.2
+LightGBM,431.5,4.2,467.2,630.7,832.2,2200.6

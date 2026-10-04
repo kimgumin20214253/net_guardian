@@ -17,6 +17,11 @@ from pymodbus.datastore import ModbusSlaveContext, ModbusServerContext
 # 클라이언트 쪽에서 진짜로 타임아웃이 발생해 "유실"로 정직하게 기록됨
 CLIENT_TIMEOUT_SEC = 1.0
 
+# Ubuntu에서 tc netem(master_collector.sh)으로 장애를 주입할 때는 반드시 0으로 끌 것:
+# 켜두면 netem 장애 위에 서버 쪽 지연/유실이 이중으로 걸림 (raw_dataset_20260904도 서버 지연 없이 수집됨)
+#   NG_SERVER_FAULTS=0 python network/server.py
+SERVER_FAULTS_ENABLED = os.environ.get('NG_SERVER_FAULTS', '1') != '0'
+
 
 def get_current_scenario():
     """tc netem이 없는 Windows에서도 같은 원리(실제로 조건을 나쁘게 만들고 실측)로
@@ -38,6 +43,8 @@ class ScenarioAwareDataBlock(ModbusSequentialDataBlock):
         # 두 번 호출되므로, 목표 확률의 제곱근을 호출당 확률로 사용해 합성 확률을 맞춤).
         # B: RTT 157~550ms, loss 0%.  C: 대부분 정상 + loss_flag 약 2%.
         # D: 대부분 정상 + loss_flag 약 24% (C보다 훨씬 잦은 유실이 특징).
+        if not SERVER_FAULTS_ENABLED:
+            return
         scenario = get_current_scenario()
         if scenario == 'B':           # 지연 장애: 실측 분포(157~550ms)에 맞춘 실제 지연
             time.sleep(random.uniform(0.08, 0.22))
@@ -77,6 +84,7 @@ def run_modbus_server():
     identity.ProductCode = 'NG-Server-v1.0'
     identity.ProductName = 'Industrial Security Modbus Server'
     
+    print(f"서버 쪽 장애 재현: {'ON (대시보드 데모용)' if SERVER_FAULTS_ENABLED else 'OFF (tc netem 수집용)'}")
     print("서버가 포트 [5020]번에서 대기 중입니다...")
     print("종료: Ctrl + C")
 

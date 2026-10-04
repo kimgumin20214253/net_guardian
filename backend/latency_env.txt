@@ -1,0 +1,7 @@
+CPU: AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD
+Logical cores: 16
+OS: Windows-10-10.0.26200-SP0
+Python: 3.11.9
+scikit-learn: 1.4.2
+lightgbm: 4.3.0
+Measured at: 2026-10-03 19:54:22

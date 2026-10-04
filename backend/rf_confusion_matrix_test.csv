@@ -1,0 +1,5 @@
+,Normal(0),Delay(1),Loss(2),Combined(3)
+Normal(0),2528,0,77,553
+Delay(1),0,351,1,0
+Loss(2),260,10,352,73
+Combined(3),150,0,9,35
