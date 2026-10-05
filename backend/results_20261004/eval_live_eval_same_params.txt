@@ -1,0 +1,69 @@
+[*] 데이터: raw_dataset_20261004/eval_same_params.csv (12233행, 2026-10-04 17:58:23 ~ 2026-10-04 18:30:09)
+[*] 모델  : C:\workspace\net_guardian\backend\models\rf_best_accuracy.pkl
+[*] 클래스 분포: {0: 8859, 1: 844, 2: 1892, 3: 638}
+
+============================================================
+ Accuracy : 76.03%
+ Macro F1 : 0.6728
+============================================================
+              precision    recall  f1-score   support
+
+   Normal(A)     0.8878    0.7904    0.8363      8859
+    Delay(B)     0.9916    0.9834    0.9875       844
+     Loss(C)     0.8510    0.7156    0.7775      1892
+ Combined(D)     0.0600    0.1803    0.0900       638
+
+    accuracy                         0.7603     12233
+   macro avg     0.6976    0.6674    0.6728     12233
+weighted avg     0.8461    0.7603    0.7987     12233
+
+                예측 Normal(A)  예측 Delay(B)  예측 Loss(C)  예측 Combined(D)
+실제 Normal(A)            7002            1          84            1772
+실제 Delay(B)                0          830          14               0
+실제 Loss(C)               501            6        1354              31
+실제 Combined(D)           384            0         139             115
+
+[탐지 지연] 장애 구간별
+   Scenario               Start  Samples in segment  Detected  Samples to detect  Seconds to detect
+   Delay(B) 2026-10-04 17:59:24                  75      True                  1                0.0
+    Loss(C) 2026-10-04 18:00:24                 131      True                  7                1.0
+Combined(D) 2026-10-04 18:01:24                  61      True                  0                0.0
+   Delay(B) 2026-10-04 18:02:14                  79      True                  1                0.0
+    Loss(C) 2026-10-04 18:03:14                 156      True                  1                0.0
+Combined(D) 2026-10-04 18:04:14                  62      True                  5                0.0
+   Delay(B) 2026-10-04 18:05:04                  77      True                  1                1.0
+    Loss(C) 2026-10-04 18:06:04                 219      True                  1                0.0
+Combined(D) 2026-10-04 18:07:04                  61      True                  7                1.0
+   Delay(B) 2026-10-04 18:07:54                  80      True                  1                1.0
+    Loss(C) 2026-10-04 18:08:54                 181      True                  1                0.0
+Combined(D) 2026-10-04 18:09:54                  62      True                  4                1.0
+   Delay(B) 2026-10-04 18:10:45                  78      True                  1                0.0
+    Loss(C) 2026-10-04 18:11:44                 189      True                  2                1.0
+Combined(D) 2026-10-04 18:12:44                  62      True                  4                1.0
+   Delay(B) 2026-10-04 18:13:35                  77      True                  0                0.0
+    Loss(C) 2026-10-04 18:14:35                 152      True                  4                0.0
+Combined(D) 2026-10-04 18:15:35                  49      True                 36                6.0
+   Delay(B) 2026-10-04 18:16:25                  73      True                  1                0.0
+    Loss(C) 2026-10-04 18:17:25                 149      True                  4                1.0
+Combined(D) 2026-10-04 18:18:25                  49      True                 30                4.0
+   Delay(B) 2026-10-04 18:19:15                  75      True                  1                1.0
+    Loss(C) 2026-10-04 18:20:15                 133      True                  1                1.0
+Combined(D) 2026-10-04 18:21:15                  49      True                 30                4.0
+   Delay(B) 2026-10-04 18:22:06                  74      True                  1                0.0
+    Loss(C) 2026-10-04 18:23:05                 137      True                  2                1.0
+Combined(D) 2026-10-04 18:24:05                  61      True                  1                1.0
+   Delay(B) 2026-10-04 18:24:56                  78      True                  1                0.0
+    Loss(C) 2026-10-04 18:25:56                 219      True                  0                0.0
+Combined(D) 2026-10-04 18:26:56                  61      True                  2                0.0
+   Delay(B) 2026-10-04 18:27:46                  78      True                  1                0.0
+    Loss(C) 2026-10-04 18:28:46                 226      True                  1                0.0
+Combined(D) 2026-10-04 18:29:46                  61      True                  1                0.0
+
+[탐지 지연] 시나리오별 요약 (탐지된 구간 기준 중앙값)
+             segments  detected  median_samples  median_seconds
+Scenario                                                       
+Combined(D)        11        11             4.0             1.0
+Delay(B)           11        11             1.0             0.0
+Loss(C)            11        11             1.0             0.0
+
+[*] 'raw_dataset_20261004/eval_same_params_detection.csv' 저장 완료.

@@ -1,0 +1,6 @@
+part,n,share,rtt_median_ms,loss_rate,macro_f1_mean,macro_f1_std,recall_D_mean
+D_first5s,868.0,0.6955,15.585,0.0035,,,
+D_rest,380.0,0.3045,5000.0,0.7763,,,
+A_reference,16345.0,,15.95,,,,
+blockCV_RF_all,,,,,0.6834,0.0225,0.2765
+blockCV_RF_exclude_D_first5s,,,,,0.8079,0.0387,0.7278

@@ -1,0 +1,3 @@
+condition,rows,timeouts,delayed_over_150ms,rtt_median_ms,near_200ms,near_430ms,near_640ms,near_900ms
+A,574,0,0,3.37,0,0,0,0
+C,415,2,37,5.19,26,2,7,2

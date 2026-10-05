@@ -1,0 +1,9 @@
+session,subset,model,n,accuracy,macro_f1,recall_A,recall_B,recall_C,recall_D
+eval_same_params,all,RF,12233,0.7603,0.6728,0.7904,0.9834,0.7156,0.1803
+eval_same_params,all,DT+window15,12233,0.8721,0.7265,0.9248,0.8282,0.8504,0.2618
+eval_same_params,exclude_D_first5s,RF,11778,0.7809,0.6577,0.7904,0.9834,0.7156,0.0601
+eval_same_params,exclude_D_first5s,DT+window15,11778,0.903,0.7475,0.9248,0.8282,0.8504,0.7377
+eval_generalization,all,RF,11346,0.7289,0.4534,0.8901,0.2916,0.4315,0.0823
+eval_generalization,all,DT+window15,11346,0.7967,0.5817,0.8964,0.4088,0.7358,0.223
+eval_generalization,exclude_D_first5s,RF,10955,0.7514,0.4458,0.8901,0.2916,0.4315,0.0449
+eval_generalization,exclude_D_first5s,DT+window15,10955,0.8241,0.6019,0.8964,0.4088,0.7358,0.7115
