@@ -7,6 +7,13 @@ FEATURES = ['rtt', 'loss_flag', 'jitter']
 LABEL = ['label']
 CSV_HEADER = ['timestamp'] + FEATURES + LABEL
 
+# PA_LOG_RETRANS=1 이면 요청마다 운영체제가 센 TCP 재전송/송신 세그먼트 증가량을 함께 기록한다 (Linux 전용).
+# RTO 초과로 추정한 재전송(eval_tcp_features.py)이 실제 재전송과 맞는지 요청 단위로 대조하기 위한 정답 값.
+# 끄면(기본값) 기존 컬럼 그대로라 대시보드/API가 읽는 파일 형식은 바뀌지 않는다.
+LOG_RETRANS = os.environ.get('PA_LOG_RETRANS', '0') == '1'
+if LOG_RETRANS:
+    CSV_HEADER = CSV_HEADER + ['retrans_segs', 'out_segs']
+
 # data/ 버전의 구(5피처) net_guardian_robust_dataset.csv와 스키마가 다르므로 별도 파일로 분리
 # PA_OUTPUT_FILE 환경변수로 출력 파일명을 바꿀 수 있음 (기본값 유지 시 팀원/기존 실행 방식과 100% 동일)
 CSV_FILE = os.path.join('data', os.environ.get('PA_OUTPUT_FILE', 'net_guardian_scenario_dataset.csv'))
@@ -16,6 +23,23 @@ os.makedirs(os.path.dirname(CSV_FILE), exist_ok=True)
 if not os.path.exists(CSV_FILE):
     with open(CSV_FILE, 'w', newline='') as f:
         csv.DictWriter(f, fieldnames=CSV_HEADER).writeheader()
+else:
+    with open(CSV_FILE, newline='') as f:
+        existing = next(csv.reader(f), [])
+    if existing != CSV_HEADER:
+        raise SystemExit(f"[!] {CSV_FILE}의 컬럼({existing})이 지금 설정({CSV_HEADER})과 다릅니다. "
+                         f"PA_OUTPUT_FILE로 새 파일 이름을 지정하세요.")
+
+
+def read_tcp_counters():
+    """호스트 전체 TCP 카운터(RetransSegs, OutSegs). /proc/net/snmp가 없는 OS(Windows 등)에서는 None."""
+    try:
+        with open('/proc/net/snmp') as f:
+            tcp = [line.split() for line in f if line.startswith('Tcp:')]
+        stats = dict(zip(tcp[0][1:], tcp[1][1:]))
+        return int(stats['RetransSegs']), int(stats['OutSegs'])
+    except (OSError, IndexError, KeyError, ValueError):
+        return None
 
 # 학습 데이터(raw_dataset_20260904) 수집 조건과 동일하게 맞춘 값 (당시 network/client.py + save_data.py):
 # - 응답 타임아웃 1초 -> 1초 안에 응답이 없으면 유실(loss_flag=1)
@@ -42,10 +66,14 @@ async def main():
     client = AsyncModbusTcpClient(modbus_host, port=5020, timeout=MODBUS_TIMEOUT_SEC)
     await client.connect()
     print(f"[+] Modbus 감시 + CSV 적립 엔진 시작 (대상: {modbus_host}:5020, 출력: {CSV_FILE}, 종료: Ctrl+C)")
+    if LOG_RETRANS:
+        state = "기록함" if read_tcp_counters() is not None else "이 OS에서는 읽을 수 없어 빈칸으로 기록"
+        print(f"[+] TCP 재전송 카운터: {state}")
 
     prev_rtt = None
     try:
         while True:
+            before = read_tcp_counters() if LOG_RETRANS else None
             start = time.time()
             w, r = await asyncio.gather(
                 client.write_register(0, 77),
@@ -71,6 +99,12 @@ async def main():
                 'jitter': round(jitter, 2),
                 'label': get_current_label(),
             }
+            if LOG_RETRANS:
+                # 이 요청을 보내고 응답(또는 타임아웃)까지 사이에 호스트 전체에서 늘어난 재전송/송신 세그먼트 수
+                after = read_tcp_counters()
+                ok = before is not None and after is not None
+                row['retrans_segs'] = after[0] - before[0] if ok else ''
+                row['out_segs'] = after[1] - before[1] if ok else ''
             with open(CSV_FILE, 'a', newline='') as f:
                 csv.DictWriter(f, fieldnames=CSV_HEADER).writerow(row)
 

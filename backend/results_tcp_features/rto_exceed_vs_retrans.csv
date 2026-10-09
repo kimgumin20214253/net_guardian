@@ -1,0 +1,13 @@
+srtt_mode,data,class,rto_exceed_rate,rto_exceed_count,requests,nstat_retrans_rate
+timeout_only,raw_dataset_20260904,A,0.0023,,,
+timeout_only,raw_dataset_20260904,B,0.0102,,,
+timeout_only,raw_dataset_20260904,C,0.0588,,,
+timeout_only,raw_dataset_20260904,D,0.0008,,,
+timeout_only,retrans_A (60s),A,0.0,0.0,574.0,0.0012
+timeout_only,retrans_C (60s),C,0.0554,23.0,415.0,0.0567
+karn,raw_dataset_20260904,A,0.0023,,,
+karn,raw_dataset_20260904,B,0.0131,,,
+karn,raw_dataset_20260904,C,0.0994,,,
+karn,raw_dataset_20260904,D,0.0008,,,
+karn,retrans_A (60s),A,0.0,0.0,574.0,0.0012
+karn,retrans_C (60s),C,0.0819,34.0,415.0,0.0567
