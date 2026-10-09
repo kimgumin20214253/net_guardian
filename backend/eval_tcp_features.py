@@ -102,41 +102,46 @@ def scores(y, p):
             **{f"recall_{c}": round(r, 4) for c, r in zip("ABCD", rec)}}
 
 
-rows, rate_rows = [], []
-for mode in ["timeout_only", "karn"]:
-    train = load_train(mode)
-    sessions = {s: load_session(s, mode) for s in ["eval_same_params", "eval_generalization"]}
-    for fs_name, F in FEATURE_SETS.items():
-        ys, ps, f1s = [], [], []
-        for k in range(N_FOLDS):
-            tr, te = train[train["block"] != k], train[train["block"] == k]
-            p = rf().fit(tr[F], tr["label"]).predict(te[F])
-            ys.append(te["label"].to_numpy()); ps.append(p)
-            f1s.append(f1_score(te["label"], p, labels=LABELS, average="macro", zero_division=0))
-        rows.append({"srtt_mode": mode, "features": fs_name, "eval": "time_block_5fold",
-                     **scores(np.concatenate(ys), np.concatenate(ps)),
-                     "macro_f1_fold_mean": round(np.mean(f1s), 4), "macro_f1_fold_std": round(np.std(f1s, ddof=1), 4)})
-        model = rf().fit(train[F], train["label"])
-        for s_name, s in sessions.items():
-            rows.append({"srtt_mode": mode, "features": fs_name, "eval": s_name,
-                         **scores(s["label"], model.predict(s[F]))})
-    # 클래스별 RTO 초과 비율 (원 데이터)
-    for lab, g in train.groupby("label"):
-        rate_rows.append({"srtt_mode": mode, "data": "raw_dataset_20260904", "class": "ABCD"[lab],
-                          "rto_exceed_rate": round(g["rto_exceed"].mean(), 4)})
-    # nstat과 같은 60초 구간에서 RTO 초과 비율 vs 실제 재전송 비율
-    for c in "AC":
-        t = add_features(pd.read_csv(os.path.join(NEW_DIR, f"retrans_{c}.csv")), mode)
-        r, o = NSTAT[c]
-        rate_rows.append({"srtt_mode": mode, "data": f"retrans_{c} (60s)", "class": c,
-                          "rto_exceed_rate": round(t["rto_exceed"].mean(), 4),
-                          "rto_exceed_count": int(t["rto_exceed"].sum()), "requests": len(t),
-                          "nstat_retrans_rate": round(r / o, 4)})
+def main():
+    rows, rate_rows = [], []
+    for mode in ["timeout_only", "karn"]:
+        train = load_train(mode)
+        sessions = {s: load_session(s, mode) for s in ["eval_same_params", "eval_generalization"]}
+        for fs_name, F in FEATURE_SETS.items():
+            ys, ps, f1s = [], [], []
+            for k in range(N_FOLDS):
+                tr, te = train[train["block"] != k], train[train["block"] == k]
+                p = rf().fit(tr[F], tr["label"]).predict(te[F])
+                ys.append(te["label"].to_numpy()); ps.append(p)
+                f1s.append(f1_score(te["label"], p, labels=LABELS, average="macro", zero_division=0))
+            rows.append({"srtt_mode": mode, "features": fs_name, "eval": "time_block_5fold",
+                         **scores(np.concatenate(ys), np.concatenate(ps)),
+                         "macro_f1_fold_mean": round(np.mean(f1s), 4), "macro_f1_fold_std": round(np.std(f1s, ddof=1), 4)})
+            model = rf().fit(train[F], train["label"])
+            for s_name, s in sessions.items():
+                rows.append({"srtt_mode": mode, "features": fs_name, "eval": s_name,
+                             **scores(s["label"], model.predict(s[F]))})
+        # 클래스별 RTO 초과 비율 (원 데이터)
+        for lab, g in train.groupby("label"):
+            rate_rows.append({"srtt_mode": mode, "data": "raw_dataset_20260904", "class": "ABCD"[lab],
+                              "rto_exceed_rate": round(g["rto_exceed"].mean(), 4)})
+        # nstat과 같은 60초 구간에서 RTO 초과 비율 vs 실제 재전송 비율
+        for c in "AC":
+            t = add_features(pd.read_csv(os.path.join(NEW_DIR, f"retrans_{c}.csv")), mode)
+            r, o = NSTAT[c]
+            rate_rows.append({"srtt_mode": mode, "data": f"retrans_{c} (60s)", "class": c,
+                              "rto_exceed_rate": round(t["rto_exceed"].mean(), 4),
+                              "rto_exceed_count": int(t["rto_exceed"].sum()), "requests": len(t),
+                              "nstat_retrans_rate": round(r / o, 4)})
 
-res = pd.DataFrame(rows)
-res.to_csv(os.path.join(OUT_DIR, "feature_comparison.csv"), index=False)
-pd.DataFrame(rate_rows).to_csv(os.path.join(OUT_DIR, "rto_exceed_vs_retrans.csv"), index=False)
-pd.set_option("display.width", 200)
-print(res.to_string(index=False))
-print()
-print(pd.DataFrame(rate_rows).to_string(index=False))
+    res = pd.DataFrame(rows)
+    res.to_csv(os.path.join(OUT_DIR, "feature_comparison.csv"), index=False)
+    pd.DataFrame(rate_rows).to_csv(os.path.join(OUT_DIR, "rto_exceed_vs_retrans.csv"), index=False)
+    pd.set_option("display.width", 200)
+    print(res.to_string(index=False))
+    print()
+    print(pd.DataFrame(rate_rows).to_string(index=False))
+
+
+if __name__ == "__main__":
+    main()

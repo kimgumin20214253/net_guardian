@@ -1,0 +1,6 @@
+subset,rto_exceed&retrans,rto_exceed_only,retrans_only,neither,precision,recall
+all,190,12,716,9882,0.9406,0.2097
+A,13,0,311,7291,1.0,0.0401
+B,18,12,190,609,0.6,0.0865
+C,159,0,212,1601,1.0,0.4286
+D,0,0,3,381,,0.0
