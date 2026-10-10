@@ -1,0 +1,13 @@
+session,features,class,segments,detected,median_seconds,max_seconds
+eval_same_params,base,B,11,11,0.0,1.0
+eval_same_params,base,C,11,11,0.0,1.0
+eval_same_params,base,D,11,11,1.0,7.0
+eval_same_params,base+tcp,B,11,11,3.0,4.0
+eval_same_params,base+tcp,C,11,11,1.0,2.0
+eval_same_params,base+tcp,D,11,7,6.0,6.0
+verify_retrans,base,B,11,11,1.0,1.0
+verify_retrans,base,C,11,10,0.0,1.0
+verify_retrans,base,D,10,10,6.5,7.0
+verify_retrans,base+tcp,B,11,11,3.0,4.0
+verify_retrans,base+tcp,C,11,10,0.0,1.0
+verify_retrans,base+tcp,D,10,9,6.0,7.0
