@@ -70,6 +70,52 @@ export async function setScenario(scenario: ScenarioCode): Promise<ScenarioStatu
   return res.json();
 }
 
+// ── 산업 네트워크(사이트) 여러 개 ──────────────────────────────
+// backend/api/main.py의 SITES와 1:1로 대응한다. site-1은 기존 단일 사이트 엔드포인트
+// (/scenario, /telemetry/latest)와 같은 데이터를 보므로, 기존 페이지는 그대로 두고
+// 이 함수들은 /scenario 페이지의 멀티사이트 화면에서만 쓴다.
+export type SiteId = "site-1" | "site-2" | "site-3";
+
+export type SiteInfo = {
+  id: SiteId;
+  name: string;
+  port: number;
+  scenario: ScenarioCode;
+};
+
+export async function fetchSites(): Promise<{ sites: SiteInfo[] }> {
+  const res = await fetch(`${API_BASE}/sites`, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`API 응답 오류 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function fetchSiteTelemetry(siteId: SiteId, n = 50): Promise<TelemetryResponse> {
+  const res = await fetch(`${API_BASE}/sites/${siteId}/telemetry/latest?n=${n}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`API 응답 오류 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function setSiteScenario(
+  siteId: SiteId,
+  scenario: ScenarioCode
+): Promise<ScenarioStatus & { site: SiteId }> {
+  const res = await fetch(`${API_BASE}/sites/${siteId}/scenario`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scenario }),
+  });
+  if (!res.ok) {
+    throw new Error(`API 응답 오류 (${res.status})`);
+  }
+  return res.json();
+}
+
 export type CopilotResponse = {
   answer: string;
   source: string;

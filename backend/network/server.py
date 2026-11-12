@@ -22,12 +22,18 @@ CLIENT_TIMEOUT_SEC = 1.0
 #   NG_SERVER_FAULTS=0 python network/server.py
 SERVER_FAULTS_ENABLED = os.environ.get('NG_SERVER_FAULTS', '1') != '0'
 
+# 산업 네트워크(사이트)를 여러 개 동시에 띄울 때, 사이트마다 다른 포트/라벨 파일을 쓰도록
+# 환경변수로 분리한다. 기본값은 기존 단일 사이트 동작과 100% 동일하다.
+#   NG_SERVER_PORT=5021 NG_LABEL_FILE=.current_label_site2 python network/server.py
+SERVER_PORT = int(os.environ.get('NG_SERVER_PORT', '5020'))
+LABEL_FILE = os.environ.get('NG_LABEL_FILE', '.current_label')
+
 
 def get_current_scenario():
     """tc netem이 없는 Windows에서도 같은 원리(실제로 조건을 나쁘게 만들고 실측)로
     시나리오를 재현하기 위해 .current_label(A/B/C/D)을 읽어 응답 지연/지연 유실을 결정한다."""
     try:
-        with open('.current_label') as f:
+        with open(LABEL_FILE) as f:
             return f.read().strip().upper()
     except Exception:
         return 'A'
@@ -85,14 +91,15 @@ def run_modbus_server():
     identity.ProductName = 'Industrial Security Modbus Server'
     
     print(f"서버 쪽 장애 재현: {'ON (대시보드 데모용)' if SERVER_FAULTS_ENABLED else 'OFF (tc netem 수집용)'}")
-    print("서버가 포트 [5020]번에서 대기 중입니다...")
+    print(f"라벨 파일: {LABEL_FILE}")
+    print(f"서버가 포트 [{SERVER_PORT}]번에서 대기 중입니다...")
     print("종료: Ctrl + C")
 
     try:
         # 비동기 방식으로 서버 실행
         # 0.0.0.0 바인딩은 127.0.0.1도 그대로 받아들이는 상위 집합이라 기존 로컬 데모 동작에는 영향 없음.
         # 우분투 VM 등 외부(다른 호스트)에서도 접속할 수 있게 하기 위해 특정 IP가 아닌 모든 인터페이스로 바인딩.
-        asyncio.run(StartAsyncTcpServer(context=context, identity=identity, address=("0.0.0.0", 5020)))
+        asyncio.run(StartAsyncTcpServer(context=context, identity=identity, address=("0.0.0.0", SERVER_PORT)))
     except Exception as e:
         print(f"[오류] 서버 기동 오류: {e}")
 

@@ -50,9 +50,12 @@ LOSS_RTT_SENTINEL_MS = 5000.0
 # train_and_benchmark.py의 scenario_map(A=0, B=1, C=2, D=3)과 동일 매핑
 SCENARIO_LABEL_MAP = {'A': 0, 'B': 1, 'C': 2, 'D': 3}
 
+# 사이트별로 다른 라벨 파일을 읽게 하려면 PA_LABEL_FILE로 지정 (기본값은 기존 동작과 100% 동일)
+LABEL_FILE = os.environ.get('PA_LABEL_FILE', '.current_label')
+
 def get_current_label():
     try:
-        with open('.current_label') as f:
+        with open(LABEL_FILE) as f:
             raw = f.read().strip().upper()
         if raw in SCENARIO_LABEL_MAP:
             return SCENARIO_LABEL_MAP[raw]
@@ -61,11 +64,12 @@ def get_current_label():
         return 0
 
 async def main():
-    # PA_MODBUS_HOST 환경변수로 접속 대상을 바꿀 수 있음 (기본값 127.0.0.1 유지 시 기존 동작과 100% 동일)
+    # PA_MODBUS_HOST/PA_MODBUS_PORT 환경변수로 접속 대상을 바꿀 수 있음 (기본값 유지 시 기존 동작과 100% 동일)
     modbus_host = os.environ.get('PA_MODBUS_HOST', '127.0.0.1')
-    client = AsyncModbusTcpClient(modbus_host, port=5020, timeout=MODBUS_TIMEOUT_SEC)
+    modbus_port = int(os.environ.get('PA_MODBUS_PORT', '5020'))
+    client = AsyncModbusTcpClient(modbus_host, port=modbus_port, timeout=MODBUS_TIMEOUT_SEC)
     await client.connect()
-    print(f"[+] Modbus 감시 + CSV 적립 엔진 시작 (대상: {modbus_host}:5020, 출력: {CSV_FILE}, 종료: Ctrl+C)")
+    print(f"[+] Modbus 감시 + CSV 적립 엔진 시작 (대상: {modbus_host}:{modbus_port}, 라벨: {LABEL_FILE}, 출력: {CSV_FILE}, 종료: Ctrl+C)")
     if LOG_RETRANS:
         state = "기록함" if read_tcp_counters() is not None else "이 OS에서는 읽을 수 없어 빈칸으로 기록"
         print(f"[+] TCP 재전송 카운터: {state}")

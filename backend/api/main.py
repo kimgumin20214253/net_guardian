@@ -21,7 +21,6 @@ except Exception as e:  # noqa: BLE001 - 코파일럿 로드 실패를 절대 �
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_PATH = os.path.join(BASE_DIR, "models", "rf_best_accuracy.pkl")
-LIVE_DATA_PATH = os.path.join(BASE_DIR, "data", "net_guardian_scenario_dataset.csv")
 DEMO_DATA_DIR = os.path.join(BASE_DIR, "raw_dataset_20260904")
 FEATURES = ["rtt", "loss_flag", "jitter"]
 
@@ -63,6 +62,39 @@ DEMO_SCENARIO_FILES = {
 # .current_label에 적으면 두 스크립트가 즉시 읽어서 지연/유실을 실제로 재현한다.
 SCENARIO_LABEL_MAP = {"A": 0, "B": 1, "C": 2, "D": 3}
 CURRENT_LABEL_PATH = os.path.join(BASE_DIR, ".current_label")
+
+# 산업 네트워크(사이트) 여러 개를 동시에 보여주기 위한 설정.
+# site-1은 기존 단일 사이트 때 쓰던 파일명을 그대로 써서, 지금까지 쓰던 실행 방법(.current_label,
+# net_guardian_scenario_dataset.csv)이 전혀 안 바뀐다. site-2/site-3는 새 포트·파일로 분리된 사이트이며,
+# network/server.py와 packet_analyzer.py를 각각 NG_SERVER_PORT/NG_LABEL_FILE,
+# PA_MODBUS_PORT/PA_LABEL_FILE/PA_OUTPUT_FILE 환경변수로 맞춰 실행해야 데이터가 들어온다.
+SITES = {
+    "site-1": {
+        "name": "1공장 - 생산라인 A",
+        "port": 5020,
+        "label_file": os.path.join(BASE_DIR, ".current_label"),
+        "csv": os.path.join(BASE_DIR, "data", "net_guardian_scenario_dataset.csv"),
+    },
+    "site-2": {
+        "name": "2공장 - 생산라인 B",
+        "port": 5021,
+        "label_file": os.path.join(BASE_DIR, ".current_label_site2"),
+        "csv": os.path.join(BASE_DIR, "data", "net_guardian_scenario_dataset_site2.csv"),
+    },
+    "site-3": {
+        "name": "3공장 - 생산라인 C",
+        "port": 5022,
+        "label_file": os.path.join(BASE_DIR, ".current_label_site3"),
+        "csv": os.path.join(BASE_DIR, "data", "net_guardian_scenario_dataset_site3.csv"),
+    },
+}
+
+
+def _get_site(site_id: str) -> dict:
+    site = SITES.get(site_id)
+    if site is None:
+        raise HTTPException(status_code=404, detail=f"알 수 없는 사이트: {site_id} (가능한 값: {list(SITES)})")
+    return site
 
 app = FastAPI(title="Net Guardian Model API")
 
@@ -113,29 +145,55 @@ class ScenarioRequest(BaseModel):
     scenario: str = Field(..., description="A(정상)/B(지연)/C(유실)/D(복합) 중 하나")
 
 
-def _read_current_scenario() -> str:
+def _read_current_scenario(label_file: str = CURRENT_LABEL_PATH) -> str:
     try:
-        with open(CURRENT_LABEL_PATH) as f:
+        with open(label_file) as f:
             raw = f.read().strip().upper()
     except FileNotFoundError:
         raw = "A"
     return raw if raw in SCENARIO_LABEL_MAP else "A"
 
 
+@app.get("/sites")
+def list_sites():
+    """대시보드의 사이트 선택 목록용. 각 사이트의 현재 시나리오도 같이 내려준다."""
+    return {
+        "sites": [
+            {"id": site_id, "name": site["name"], "port": site["port"],
+             "scenario": _read_current_scenario(site["label_file"])}
+            for site_id, site in SITES.items()
+        ]
+    }
+
+
+@app.get("/sites/{site_id}/scenario")
+def get_site_scenario(site_id: str):
+    site = _get_site(site_id)
+    scenario = _read_current_scenario(site["label_file"])
+    return {"site": site_id, "scenario": scenario, **SCENARIO_INFO[SCENARIO_LABEL_MAP[scenario]]}
+
+
+@app.post("/sites/{site_id}/scenario")
+def set_site_scenario(site_id: str, req: ScenarioRequest):
+    site = _get_site(site_id)
+    scenario = req.scenario.strip().upper()
+    if scenario not in SCENARIO_LABEL_MAP:
+        raise HTTPException(status_code=400, detail="scenario는 A, B, C, D 중 하나여야 합니다.")
+    with open(site["label_file"], "w") as f:
+        f.write(scenario)
+    return {"site": site_id, "scenario": scenario, **SCENARIO_INFO[SCENARIO_LABEL_MAP[scenario]]}
+
+
 @app.get("/scenario")
 def get_scenario():
-    scenario = _read_current_scenario()
-    return {"scenario": scenario, **SCENARIO_INFO[SCENARIO_LABEL_MAP[scenario]]}
+    """사이트 구분 없던 시절과의 하위 호환용. site-1과 동일하다."""
+    return get_site_scenario("site-1")
 
 
 @app.post("/scenario")
 def set_scenario(req: ScenarioRequest):
-    scenario = req.scenario.strip().upper()
-    if scenario not in SCENARIO_LABEL_MAP:
-        raise HTTPException(status_code=400, detail="scenario는 A, B, C, D 중 하나여야 합니다.")
-    with open(CURRENT_LABEL_PATH, "w") as f:
-        f.write(scenario)
-    return {"scenario": scenario, **SCENARIO_INFO[SCENARIO_LABEL_MAP[scenario]]}
+    """사이트 구분 없던 시절과의 하위 호환용. site-1과 동일하다."""
+    return set_site_scenario("site-1", req)
 
 
 def _load_demo_telemetry(n: int) -> pd.DataFrame:
@@ -210,14 +268,13 @@ def copilot_guide(scenario: str):
     return doc
 
 
-@app.get("/stats/summary")
-def stats_summary():
+def _stats_summary(csv_path: str) -> dict:
     """실제 수집 CSV 전체를 집계한 누적 통계 (지어낸 수치 없이, 저장된 데이터 그대로 계산)."""
-    if not os.path.exists(LIVE_DATA_PATH):
+    if not os.path.exists(csv_path):
         return {"source": "demo", "total_count": 0, "by_label": {}, "avg_rtt": None,
                 "first_timestamp": None, "last_timestamp": None}
 
-    df = pd.read_csv(LIVE_DATA_PATH)
+    df = pd.read_csv(csv_path)
     if df.empty:
         return {"source": "live", "total_count": 0, "by_label": {}, "avg_rtt": None,
                 "first_timestamp": None, "last_timestamp": None}
@@ -236,10 +293,9 @@ def stats_summary():
     }
 
 
-@app.get("/telemetry/latest")
-def telemetry_latest(n: int = 50):
-    if os.path.exists(LIVE_DATA_PATH):
-        df = pd.read_csv(LIVE_DATA_PATH).tail(n)
+def _telemetry_latest(csv_path: str, n: int) -> dict:
+    if os.path.exists(csv_path):
+        df = pd.read_csv(csv_path).tail(n)
         source = "live"
         df = df.rename(columns={"label": "true_label"})
     else:
@@ -263,3 +319,25 @@ def telemetry_latest(n: int = 50):
             }
         )
     return {"source": source, "points": points}
+
+
+@app.get("/sites/{site_id}/stats/summary")
+def site_stats_summary(site_id: str):
+    return _stats_summary(_get_site(site_id)["csv"])
+
+
+@app.get("/sites/{site_id}/telemetry/latest")
+def site_telemetry_latest(site_id: str, n: int = 50):
+    return _telemetry_latest(_get_site(site_id)["csv"], n)
+
+
+@app.get("/stats/summary")
+def stats_summary():
+    """사이트 구분 없던 시절과의 하위 호환용. site-1과 동일하다."""
+    return site_stats_summary("site-1")
+
+
+@app.get("/telemetry/latest")
+def telemetry_latest(n: int = 50):
+    """사이트 구분 없던 시절과의 하위 호환용. site-1과 동일하다."""
+    return site_telemetry_latest("site-1", n)
