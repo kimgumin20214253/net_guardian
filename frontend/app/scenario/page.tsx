@@ -15,7 +15,7 @@ const SCENARIO_BUTTONS: { code: ScenarioCode; label: string }[] = [
   { code: "D", label: "복합 장애" },
 ];
 
-const LABEL_TO_SCENARIO: Record<number, ScenarioCode> = { 0: "A", 1: "B", 2: "C", 3: "D" };
+const SCENARIO_LABEL: Record<ScenarioCode, string> = { A: "정상", B: "지연 장애", C: "유실 장애", D: "복합 장애" };
 
 export default function ScenarioPage() {
   const { sites, error, pending, injectScenario, resolveFault } = useMultiSiteTelemetry();
@@ -30,11 +30,11 @@ export default function ScenarioPage() {
     setPendingInjectScenario(null);
   }
 
-  const faultedSites = (sites ?? []).filter((s) => {
-    const points = s.telemetry?.points ?? [];
-    const latest = points[points.length - 1];
-    return latest && latest.predicted.severity !== "ok";
-  });
+  // "장애냐 아니냐"는 AI의 순간 예측(latest.predicted)이 아니라 실제로 주입된 시나리오로 판단한다.
+  // 유실/복합 장애는 대부분의 개별 요청이 정상처럼 보이고 일부만 이상하게 나오는 방식이라,
+  // AI의 "방금 한 건" 예측만 보면 장애 중에도 계속 정상↔이상으로 깜빡인다. 그 깜빡임을 기준으로
+  // 체크리스트를 켜고 끄면, 체크리스트가 수시로 사라졌다 다시 나타나며 체크 상태가 초기화된다.
+  const faultedSites = (sites ?? []).filter((s) => s.info.scenario !== "A");
 
   return (
     <main className="p-8">
@@ -97,7 +97,9 @@ export default function ScenarioPage() {
           {(sites ?? []).map((site) => {
             const points = site.telemetry?.points ?? [];
             const latest = points[points.length - 1];
-            const faulted = latest && latest.predicted.severity !== "ok";
+            // 빨간 테두리는 "실제로 주입된 장애" 기준 - AI의 순간 예측(latest.predicted)은
+            // 유실/복합 장애에서 정상↔이상으로 계속 깜빡이므로 테두리가 그걸 따라가면 안 된다.
+            const faulted = site.info.scenario !== "A";
 
             return (
               <div
@@ -138,26 +140,23 @@ export default function ScenarioPage() {
           <p className="text-sm text-gray-400">현재 장애가 감지된 네트워크가 없습니다.</p>
         ) : (
           <div className="space-y-6">
-            {faultedSites.map((site) => {
-              const points = site.telemetry?.points ?? [];
-              const latest = points[points.length - 1];
-              if (!latest) return null;
-              return (
-                <div key={site.info.id}>
-                  <p className="mb-1 text-sm font-semibold text-red-600">
-                    🚨 {site.info.name} — {latest.predicted.name_ko}
-                  </p>
-                  <p className="mb-2 text-xs text-gray-400">
-                    체크리스트를 전부 완료하면 자동으로 정상 상태로 복귀하고, 1분간 이 네트워크에는
-                    새 장애가 걸리지 않습니다.
-                  </p>
-                  <ActionChecklist
-                    scenario={LABEL_TO_SCENARIO[latest.predicted.label]}
-                    onComplete={() => resolveFault(site.info.id)}
-                  />
-                </div>
-              );
-            })}
+            {faultedSites.map((site) => (
+              <div key={site.info.id}>
+                <p className="mb-1 text-sm font-semibold text-red-600">
+                  🚨 {site.info.name} — {SCENARIO_LABEL[site.info.scenario]}
+                </p>
+                <p className="mb-2 text-xs text-gray-400">
+                  체크리스트를 전부 완료하면 자동으로 정상 상태로 복귀하고, 1분간 이 네트워크에는
+                  새 장애가 걸리지 않습니다.
+                </p>
+                {/* 실제로 주입된 시나리오 기준 가이드 - AI의 순간 예측이 아니라 이걸 써야
+                    장애가 안 풀린 동안 가이드가 안정적으로 유지된다. */}
+                <ActionChecklist
+                  scenario={site.info.scenario}
+                  onComplete={() => resolveFault(site.info.id)}
+                />
+              </div>
+            ))}
           </div>
         )}
       </div>
