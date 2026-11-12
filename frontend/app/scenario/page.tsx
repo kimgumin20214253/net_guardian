@@ -18,7 +18,7 @@ const SCENARIO_BUTTONS: { code: ScenarioCode; label: string }[] = [
 const LABEL_TO_SCENARIO: Record<number, ScenarioCode> = { 0: "A", 1: "B", 2: "C", 3: "D" };
 
 export default function ScenarioPage() {
-  const { sites, error, pending, injectScenario } = useMultiSiteTelemetry();
+  const { sites, error, pending, injectScenario, resolveFault } = useMultiSiteTelemetry();
 
   // 모달에 띄울 "지금 주입하려는 시나리오". null이면 모달 닫힘.
   const [pendingInjectScenario, setPendingInjectScenario] = useState<ScenarioCode | null>(null);
@@ -39,9 +39,14 @@ export default function ScenarioPage() {
   return (
     <main className="p-8">
       <h1 className="mb-2 text-3xl font-bold">장애 시나리오 제어</h1>
-      <p className="mb-6 text-sm text-gray-500">
+      <p className="mb-1 text-sm text-gray-500">
         버튼을 누르면 어느 산업 네트워크에 장애를 주입할지 선택할 수 있습니다. 선택한 네트워크에만
         실제로 장애가 재현되고, 아래 그래프에서 해당 네트워크만 실시간으로 반응합니다.
+      </p>
+      <p className="mb-6 text-xs text-gray-400">
+        5분마다 정상인 네트워크 중 하나에 자동으로 장애가 무작위 주입됩니다. 초동 조치 체크리스트를
+        전부 완료하면 정상으로 복귀하고, 그 네트워크는 1분간 어떤 방식으로도 장애가 걸리지 않습니다
+        (직접 주입도 동일하게 적용).
       </p>
 
       {error && (
@@ -106,6 +111,11 @@ export default function ScenarioPage() {
                   <span className="text-xs text-gray-400">
                     포트 {site.info.port} · 주입된 시나리오 {site.info.scenario}
                   </span>
+                  {site.info.cooldown_remaining > 0 && (
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-600">
+                      쿨다운 {site.info.cooldown_remaining}초
+                    </span>
+                  )}
                   {latest && (
                     <span className={`ml-auto text-sm font-semibold ${SEVERITY_TEXT_COLOR[latest.predicted.severity]}`}>
                       {latest.predicted.name_ko}
@@ -137,7 +147,14 @@ export default function ScenarioPage() {
                   <p className="mb-1 text-sm font-semibold text-red-600">
                     🚨 {site.info.name} — {latest.predicted.name_ko}
                   </p>
-                  <ActionChecklist scenario={LABEL_TO_SCENARIO[latest.predicted.label]} />
+                  <p className="mb-2 text-xs text-gray-400">
+                    체크리스트를 전부 완료하면 자동으로 정상 상태로 복귀하고, 1분간 이 네트워크에는
+                    새 장애가 걸리지 않습니다.
+                  </p>
+                  <ActionChecklist
+                    scenario={LABEL_TO_SCENARIO[latest.predicted.label]}
+                    onComplete={() => resolveFault(site.info.id)}
+                  />
                 </div>
               );
             })}

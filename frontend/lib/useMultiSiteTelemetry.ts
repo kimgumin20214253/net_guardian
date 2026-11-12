@@ -5,6 +5,7 @@ import {
   fetchSites,
   fetchSiteTelemetry,
   setSiteScenario,
+  resolveSite,
   type SiteId,
   type SiteInfo,
   type ScenarioCode,
@@ -74,12 +75,23 @@ export function useMultiSiteTelemetry() {
       await setSiteScenario(siteId, scenario);
       lastInjectionRef.current[siteId] = justBefore;
       setError(null);
-    } catch {
-      setError(CONNECTION_ERROR);
+    } catch (e) {
+      // 쿨다운(409) 같은 구체적인 사유는 그대로 보여준다. 그 외(네트워크 끊김 등)는 공통 안내문.
+      setError(e instanceof Error ? e.message : CONNECTION_ERROR);
     } finally {
       setPending(null);
     }
   }
 
-  return { sites, error, pending, injectScenario };
+  /** 초동 조치 체크리스트를 전부 완료했을 때 호출 - 정상으로 되돌리고 1분 쿨다운을 시작시킨다. */
+  async function resolveFault(siteId: SiteId) {
+    try {
+      await resolveSite(siteId);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : CONNECTION_ERROR);
+    }
+  }
+
+  return { sites, error, pending, injectScenario, resolveFault };
 }

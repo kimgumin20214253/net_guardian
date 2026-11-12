@@ -32,18 +32,27 @@ export default function ScenarioInjectModal({
         <p className="mb-4 text-xs text-gray-500">주입할 시나리오: {scenarioLabel}</p>
 
         <div className="flex flex-col gap-2">
-          {sites.map((site, i) => (
-            <button
-              key={site.id}
-              onClick={() => onPick(site.id)}
-              className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50"
-            >
-              <span className="font-semibold text-slate-800">
-                {REPLICA_LABELS[i] ?? site.id} (복제{i + 1})
-              </span>
-              <span className="ml-2 text-sm text-gray-500">{site.name}</span>
-            </button>
-          ))}
+          {sites.map((site, i) => {
+            const inCooldown = site.cooldown_remaining > 0;
+            return (
+              <button
+                key={site.id}
+                onClick={() => onPick(site.id)}
+                disabled={inCooldown}
+                className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-slate-200 disabled:hover:bg-slate-50"
+              >
+                <span className="font-semibold text-slate-800">
+                  {REPLICA_LABELS[i] ?? site.id} (복제{i + 1})
+                </span>
+                <span className="ml-2 text-sm text-gray-500">{site.name}</span>
+                {inCooldown && (
+                  <span className="ml-2 text-xs text-amber-600">
+                    조치 직후 쿨다운 {site.cooldown_remaining}초 남음
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         <button

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchCopilotGuide, type ScenarioCode, type CopilotGuide } from "@/lib/api";
 
 function parseSteps(actionGuide: string): string[] {
@@ -10,13 +10,23 @@ function parseSteps(actionGuide: string): string[] {
     .filter(Boolean);
 }
 
-export default function ActionChecklist({ scenario }: { scenario: ScenarioCode }) {
+export default function ActionChecklist({
+  scenario,
+  onComplete,
+}: {
+  scenario: ScenarioCode;
+  /** 체크리스트 항목을 전부 체크한 "그 순간"에 한 번만 호출된다 (다시 열어도 중복 호출 안 됨). */
+  onComplete?: () => void;
+}) {
   const [guide, setGuide] = useState<CopilotGuide | null>(null);
   const [checked, setChecked] = useState<boolean[]>([]);
   const [copied, setCopied] = useState(false);
+  // 같은 체크리스트에 대해 onComplete를 두 번 이상 부르지 않기 위한 엣지 트리거 가드
+  const firedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
+    firedRef.current = false;
     fetchCopilotGuide(scenario)
       .then((g) => {
         if (cancelled) return;
@@ -30,6 +40,14 @@ export default function ActionChecklist({ scenario }: { scenario: ScenarioCode }
       cancelled = true;
     };
   }, [scenario]);
+
+  useEffect(() => {
+    if (checked.length === 0 || firedRef.current) return;
+    if (checked.every(Boolean)) {
+      firedRef.current = true;
+      onComplete?.();
+    }
+  }, [checked, onComplete]);
 
   async function copyCommand() {
     if (!guide) return;

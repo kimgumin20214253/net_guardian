@@ -81,13 +81,26 @@ export type SiteInfo = {
   name: string;
   port: number;
   scenario: ScenarioCode;
+  /** 초동 조치 완료 직후 남은 쿨다운 시간(초). 0이면 쿨다운 아님 - 이 사이트에 바로 장애를 걸 수 있음. */
+  cooldown_remaining: number;
 };
+
+/** 백엔드가 4xx/5xx에 {"detail": "..."} 형태로 보내는 사람이 읽을 수 있는 메시지를 최대한 그대로 꺼내 쓴다
+ *  (예: 쿨다운 중 장애 주입 시도 -> 409 "~은(는) 방금 조치가 완료되어 N초 동안..."). */
+async function throwApiError(res: Response): Promise<never> {
+  let detail: string | null = null;
+  try {
+    const body = await res.json();
+    detail = typeof body?.detail === "string" ? body.detail : null;
+  } catch {
+    // 응답 본문이 JSON이 아니면 무시하고 아래 기본 메시지를 사용
+  }
+  throw new Error(detail ?? `API 응답 오류 (${res.status})`);
+}
 
 export async function fetchSites(): Promise<{ sites: SiteInfo[] }> {
   const res = await fetch(`${API_BASE}/sites`, { cache: "no-store" });
-  if (!res.ok) {
-    throw new Error(`API 응답 오류 (${res.status})`);
-  }
+  if (!res.ok) return throwApiError(res);
   return res.json();
 }
 
@@ -95,24 +108,29 @@ export async function fetchSiteTelemetry(siteId: SiteId, n = 50): Promise<Teleme
   const res = await fetch(`${API_BASE}/sites/${siteId}/telemetry/latest?n=${n}`, {
     cache: "no-store",
   });
-  if (!res.ok) {
-    throw new Error(`API 응답 오류 (${res.status})`);
-  }
+  if (!res.ok) return throwApiError(res);
   return res.json();
 }
 
 export async function setSiteScenario(
   siteId: SiteId,
   scenario: ScenarioCode
-): Promise<ScenarioStatus & { site: SiteId }> {
+): Promise<ScenarioStatus & { site: SiteId; cooldown_remaining: number }> {
   const res = await fetch(`${API_BASE}/sites/${siteId}/scenario`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ scenario }),
   });
-  if (!res.ok) {
-    throw new Error(`API 응답 오류 (${res.status})`);
-  }
+  if (!res.ok) return throwApiError(res);
+  return res.json();
+}
+
+/** 초동 조치 체크리스트를 전부 완료했을 때 호출 - 정상(A)로 되돌리고 1분 쿨다운을 시작한다. */
+export async function resolveSite(
+  siteId: SiteId
+): Promise<ScenarioStatus & { site: SiteId; cooldown_remaining: number }> {
+  const res = await fetch(`${API_BASE}/sites/${siteId}/resolve`, { method: "POST" });
+  if (!res.ok) return throwApiError(res);
   return res.json();
 }
 

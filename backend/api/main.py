@@ -1,5 +1,8 @@
+import asyncio
 import glob
 import os
+import random
+import time
 
 import joblib
 import pandas as pd
@@ -96,6 +99,38 @@ def _get_site(site_id: str) -> dict:
         raise HTTPException(status_code=404, detail=f"알 수 없는 사이트: {site_id} (가능한 값: {list(SITES)})")
     return site
 
+
+# ── 장애 자동 수명주기 (랜덤 주입 + 조치 후 쿨다운) ──────────────────────
+# 메모리에만 두는 상태라 API 서버를 재시작하면 초기화된다 (데모용으로 충분).
+RANDOM_INJECT_INTERVAL_SEC = 5 * 60   # 5분마다 한 번씩 무작위 사이트에 장애 주입 시도
+COOLDOWN_SEC = 60                      # 조치(해결) 직후 1분간은 그 사이트에 새 장애를 걸 수 없음
+FAULT_SCENARIOS = ["B", "C", "D"]      # 정상(A)을 제외한 실제 "장애" 코드만 무작위 후보로 사용
+
+_site_runtime: dict[str, dict] = {site_id: {"cooldown_until": 0.0} for site_id in SITES}
+
+
+def _cooldown_remaining(site_id: str) -> int:
+    remaining = _site_runtime[site_id]["cooldown_until"] - time.time()
+    return max(0, round(remaining))
+
+
+async def _random_injection_loop():
+    """5분마다, 현재 정상이고 쿨다운 중이 아닌 사이트 중 하나를 무작위로 골라 B/C/D 중 하나를 주입한다."""
+    while True:
+        await asyncio.sleep(RANDOM_INJECT_INTERVAL_SEC)
+        candidates = [
+            site_id
+            for site_id in SITES
+            if _cooldown_remaining(site_id) == 0
+            and _read_current_scenario(SITES[site_id]["label_file"]) == "A"
+        ]
+        if not candidates:
+            continue
+        target = random.choice(candidates)
+        fault = random.choice(FAULT_SCENARIOS)
+        with open(SITES[target]["label_file"], "w") as f:
+            f.write(fault)
+
 app = FastAPI(title="Net Guardian Model API")
 
 app.add_middleware(
@@ -104,6 +139,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def _start_random_injection_loop():
+    asyncio.create_task(_random_injection_loop())
 
 if not os.path.exists(MODEL_PATH):
     raise FileNotFoundError(
@@ -156,11 +196,12 @@ def _read_current_scenario(label_file: str = CURRENT_LABEL_PATH) -> str:
 
 @app.get("/sites")
 def list_sites():
-    """대시보드의 사이트 선택 목록용. 각 사이트의 현재 시나리오도 같이 내려준다."""
+    """대시보드의 사이트 선택 목록용. 각 사이트의 현재 시나리오·쿨다운 잔여시간도 같이 내려준다."""
     return {
         "sites": [
             {"id": site_id, "name": site["name"], "port": site["port"],
-             "scenario": _read_current_scenario(site["label_file"])}
+             "scenario": _read_current_scenario(site["label_file"]),
+             "cooldown_remaining": _cooldown_remaining(site_id)}
             for site_id, site in SITES.items()
         ]
     }
@@ -170,7 +211,12 @@ def list_sites():
 def get_site_scenario(site_id: str):
     site = _get_site(site_id)
     scenario = _read_current_scenario(site["label_file"])
-    return {"site": site_id, "scenario": scenario, **SCENARIO_INFO[SCENARIO_LABEL_MAP[scenario]]}
+    return {
+        "site": site_id,
+        "scenario": scenario,
+        "cooldown_remaining": _cooldown_remaining(site_id),
+        **SCENARIO_INFO[SCENARIO_LABEL_MAP[scenario]],
+    }
 
 
 @app.post("/sites/{site_id}/scenario")
@@ -179,9 +225,28 @@ def set_site_scenario(site_id: str, req: ScenarioRequest):
     scenario = req.scenario.strip().upper()
     if scenario not in SCENARIO_LABEL_MAP:
         raise HTTPException(status_code=400, detail="scenario는 A, B, C, D 중 하나여야 합니다.")
+    # 정상(A)으로 되돌리는 건 언제나 허용하지만, 장애(B/C/D)를 새로 거는 건 쿨다운 중엔 막는다
+    # (조치 완료 직후 1분간은 자동이든 수동이든 이 사이트에 장애가 걸리지 않아야 하므로).
+    remaining = _cooldown_remaining(site_id)
+    if scenario != "A" and remaining > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{site['name']}은(는) 방금 조치가 완료되어 {remaining}초 동안 장애를 주입할 수 없습니다.",
+        )
     with open(site["label_file"], "w") as f:
         f.write(scenario)
-    return {"site": site_id, "scenario": scenario, **SCENARIO_INFO[SCENARIO_LABEL_MAP[scenario]]}
+    return {"site": site_id, "scenario": scenario, "cooldown_remaining": remaining,
+            **SCENARIO_INFO[SCENARIO_LABEL_MAP[scenario]]}
+
+
+@app.post("/sites/{site_id}/resolve")
+def resolve_site_fault(site_id: str):
+    """초동 조치 체크리스트를 전부 완료했을 때 호출 - 정상(A)로 되돌리고 1분 쿨다운을 시작한다."""
+    site = _get_site(site_id)
+    with open(site["label_file"], "w") as f:
+        f.write("A")
+    _site_runtime[site_id]["cooldown_until"] = time.time() + COOLDOWN_SEC
+    return {"site": site_id, "scenario": "A", "cooldown_remaining": COOLDOWN_SEC, **SCENARIO_INFO[0]}
 
 
 @app.get("/scenario")
