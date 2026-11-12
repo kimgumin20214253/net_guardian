@@ -62,8 +62,16 @@ export default function ActionChecklist({
 
   if (!guide) return null;
 
-  const steps = parseSteps(guide.action_guide);
+  const steps = parseSteps(guide.action_guide); // 시나리오당 1~3개
   const doneCount = checked.filter(Boolean).length;
+  const allDone = steps.length > 0 && doneCount === steps.length;
+
+  function handleTakeAction(i: number) {
+    setChecked((prev) => {
+      if (prev[i]) return prev; // 이미 조치된 항목은 다시 눌러도 변화 없음
+      return prev.map((v, idx) => (idx === i ? true : v));
+    });
+  }
 
   return (
     <div className="mt-4 rounded-md border border-indigo-200 bg-indigo-50 p-4">
@@ -74,25 +82,42 @@ export default function ActionChecklist({
         </span>
       </div>
 
-      <ul className="space-y-2">
-        {steps.map((step, i) => (
-          <li key={i}>
-            <label className="flex cursor-pointer items-start gap-2.5 text-sm">
-              <input
-                type="checkbox"
-                checked={checked[i] ?? false}
-                onChange={() =>
-                  setChecked((prev) => prev.map((v, idx) => (idx === i ? !v : v)))
-                }
-                className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-indigo-300 text-indigo-600"
-              />
-              <span className={checked[i] ? "text-slate-400 line-through" : "text-slate-800"}>
-                {step}
+      <div className="space-y-2">
+        {steps.map((step, i) => {
+          const done = checked[i] ?? false;
+          return (
+            <button
+              key={i}
+              onClick={() => handleTakeAction(i)}
+              disabled={done}
+              className={`flex w-full items-center gap-2.5 rounded-md border px-3 py-2.5 text-left text-sm transition ${
+                done
+                  ? "cursor-default border-green-200 bg-green-50 text-green-700"
+                  : "border-indigo-200 bg-white text-slate-800 hover:border-indigo-400 hover:bg-indigo-100"
+              }`}
+            >
+              <span
+                className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                  done ? "bg-green-500 text-white" : "bg-indigo-100 text-indigo-600"
+                }`}
+              >
+                {done ? "✓" : i + 1}
               </span>
-            </label>
-          </li>
-        ))}
-      </ul>
+              <span className={done ? "line-through" : ""}>{step}</span>
+              <span className="ml-auto flex-shrink-0 text-xs font-medium text-indigo-400">
+                {done ? "조치 완료" : "눌러서 조치"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {allDone && (
+        <p className="mt-3 rounded-md bg-green-100 px-3 py-2 text-sm font-medium text-green-700">
+          ✅ 초동 조치를 모두 완료했습니다. 정상 상태로 복귀하고, 1분간 이 네트워크에는 새 장애가
+          걸리지 않습니다.
+        </p>
+      )}
 
       <div className="mt-3 flex items-center gap-2 rounded bg-white px-3 py-2 ring-1 ring-indigo-100">
         <code className="flex-1 overflow-x-auto whitespace-nowrap text-xs text-slate-700">
