@@ -339,7 +339,9 @@ def _stats_summary(csv_path: str) -> dict:
         return {"source": "demo", "total_count": 0, "by_label": {}, "avg_rtt": None,
                 "first_timestamp": None, "last_timestamp": None}
 
-    df = pd.read_csv(csv_path)
+    # 수집기가 겹쳐 실행되는 등으로 줄이 깨지는 경우가 있어, 깨진 줄은 버리고 나머지로 계속 진행한다
+    # (한두 줄 깨졌다고 이 사이트의 통계 전체를 못 보여주는 것보다 낫다).
+    df = pd.read_csv(csv_path, on_bad_lines="skip")
     if df.empty:
         return {"source": "live", "total_count": 0, "by_label": {}, "avg_rtt": None,
                 "first_timestamp": None, "last_timestamp": None}
@@ -360,7 +362,8 @@ def _stats_summary(csv_path: str) -> dict:
 
 def _telemetry_latest(csv_path: str, n: int) -> dict:
     if os.path.exists(csv_path):
-        df = pd.read_csv(csv_path).tail(n)
+        # 수집기가 겹쳐 실행되는 등으로 줄이 깨지는 경우가 있어, 깨진 줄은 버리고 나머지로 계속 진행한다.
+        df = pd.read_csv(csv_path, on_bad_lines="skip").tail(n)
         source = "live"
         df = df.rename(columns={"label": "true_label"})
     else:
