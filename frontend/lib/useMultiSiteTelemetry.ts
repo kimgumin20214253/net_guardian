@@ -78,8 +78,10 @@ export function useMultiSiteTelemetry() {
 
     async function load() {
       const mySeq = ++seqRef.current;
+      console.log("[useMultiSiteTelemetry] load() 시작", mySeq); // TODO: 진단 끝나면 제거
       try {
         const { sites: list } = await fetchSites();
+        console.log("[useMultiSiteTelemetry] /sites 응답", list); // TODO: 진단 끝나면 제거
         const telemetries = await Promise.all(list.map((s) => fetchSiteTelemetry(s.id, 50)));
         if (cancelled || mySeq !== seqRef.current) return; // 더 최신 작업이 이미 있었으면 이 결과는 버림
         list.forEach((info) => rememberCooldown(info.id, info.cooldown_remaining));
@@ -91,7 +93,8 @@ export function useMultiSiteTelemetry() {
           }))
         );
         setError(null);
-      } catch {
+      } catch (e) {
+        console.error("[useMultiSiteTelemetry] load() 실패", e); // TODO: 진단 끝나면 제거
         if (!cancelled && mySeq === seqRef.current) setError(CONNECTION_ERROR);
       }
     }
