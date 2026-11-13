@@ -46,7 +46,12 @@ export function useMultiSiteTelemetry() {
   const sitesRef = useRef<SiteState[] | null>(null);
   sitesRef.current = sites;
 
-  const seqRef = useRef(0);
+  // actionSeqRef는 "수동 조작(주입/조치)"이 일어날 때만 올라간다. 폴링끼리는 서로를 무효화하지
+  // 않는다 - 예전에는 폴링을 시작할 때마다 같은 값을 올렸는데, 백엔드가 느려서 폴링 하나가
+  // 3초(POLL_INTERVAL_MS) 안에 못 끝나면 다음 폴링이 먼저 값을 올려버려 이전 폴링 결과가
+  // 영원히 "낡은 것"으로 버려지는 문제가 있었다 - 사이트 목록이 "불러오는 중"에서 멈춰버림.
+  const actionSeqRef = useRef(0);
+  const loadingRef = useRef(false);
   const lastInjectionRef = useRef<Partial<Record<SiteId, string | null>>>({});
   const cooldownBaseRef = useRef<Partial<Record<SiteId, CooldownBase>>>({});
 
@@ -77,13 +82,14 @@ export function useMultiSiteTelemetry() {
     let cancelled = false;
 
     async function load() {
-      const mySeq = ++seqRef.current;
-      console.log("[useMultiSiteTelemetry] load() 시작", mySeq); // TODO: 진단 끝나면 제거
+      if (loadingRef.current) return; // 이전 폴링이 아직 안 끝났으면 겹쳐서 시작하지 않는다
+      loadingRef.current = true;
+      const seqAtStart = actionSeqRef.current;
       try {
         const { sites: list } = await fetchSites();
-        console.log("[useMultiSiteTelemetry] /sites 응답", list); // TODO: 진단 끝나면 제거
         const telemetries = await Promise.all(list.map((s) => fetchSiteTelemetry(s.id, 50)));
-        if (cancelled || mySeq !== seqRef.current) return; // 더 최신 작업이 이미 있었으면 이 결과는 버림
+        // 이 폴링이 진행되는 동안 수동 조작(주입/조치)이 일어났다면 그 결과를 덮어쓰지 않는다.
+        if (cancelled || actionSeqRef.current !== seqAtStart) return;
         list.forEach((info) => rememberCooldown(info.id, info.cooldown_remaining));
         setSites(
           list.map((info, i) => ({
@@ -93,9 +99,10 @@ export function useMultiSiteTelemetry() {
           }))
         );
         setError(null);
-      } catch (e) {
-        console.error("[useMultiSiteTelemetry] load() 실패", e); // TODO: 진단 끝나면 제거
-        if (!cancelled && mySeq === seqRef.current) setError(CONNECTION_ERROR);
+      } catch {
+        if (!cancelled && actionSeqRef.current === seqAtStart) setError(CONNECTION_ERROR);
+      } finally {
+        loadingRef.current = false;
       }
     }
 
@@ -113,7 +120,7 @@ export function useMultiSiteTelemetry() {
     const justBefore = points[points.length - 1]?.timestamp ?? null;
     try {
       const result = await setSiteScenario(siteId, scenario);
-      seqRef.current++; // 이 시점 이전에 떠 있던 폴링 응답은 낡은 것으로 간주해 무시시킨다
+      actionSeqRef.current++; // 이 시점에 진행 중이던 폴링은 낡은 것으로 간주해 결과를 버리게 한다
       lastInjectionRef.current[siteId] = justBefore;
       rememberCooldown(siteId, result.cooldown_remaining);
       applySiteUpdate(siteId, { scenario: result.scenario, cooldown_remaining: result.cooldown_remaining });
@@ -131,7 +138,7 @@ export function useMultiSiteTelemetry() {
   async function resolveFault(siteId: SiteId) {
     try {
       const result = await resolveSite(siteId);
-      seqRef.current++; // 이 시점 이전에 떠 있던 폴링 응답은 낡은 것으로 간주해 무시시킨다
+      actionSeqRef.current++; // 이 시점에 진행 중이던 폴링은 낡은 것으로 간주해 결과를 버리게 한다
       rememberCooldown(siteId, result.cooldown_remaining);
       applySiteUpdate(siteId, { scenario: result.scenario, cooldown_remaining: result.cooldown_remaining });
       setError(null);
