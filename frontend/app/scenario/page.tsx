@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useMultiSiteTelemetry } from "@/lib/useMultiSiteTelemetry";
-import { SEVERITY_TEXT_COLOR } from "@/lib/severityStyles";
 import { type ScenarioCode, type SiteId } from "@/lib/api";
 import ActionChecklist from "@/components/ActionChecklist";
 import ScenarioInjectModal from "@/components/ScenarioInjectModal";
@@ -16,6 +15,15 @@ const SCENARIO_BUTTONS: { code: ScenarioCode; label: string }[] = [
 ];
 
 const SCENARIO_LABEL: Record<ScenarioCode, string> = { A: "정상", B: "지연 장애", C: "유실 장애", D: "복합 장애" };
+
+// 실제 주입된 시나리오 기준 색상 - AI의 순간 예측(latest.predicted.severity)으로 색을 입히면
+// 유실/복합 장애에서 대부분 샘플이 정상처럼 보여 색이 계속 바뀐다.
+const SCENARIO_SEVERITY_COLOR: Record<ScenarioCode, string> = {
+  A: "text-green-600",
+  B: "text-yellow-600",
+  C: "text-red-600",
+  D: "text-purple-600",
+};
 
 export default function ScenarioPage() {
   const { sites, error, pending, injectScenario, resolveFault } = useMultiSiteTelemetry();
@@ -119,8 +127,8 @@ export default function ScenarioPage() {
                     </span>
                   )}
                   {latest && (
-                    <span className={`ml-auto text-sm font-semibold ${SEVERITY_TEXT_COLOR[latest.predicted.severity]}`}>
-                      {latest.predicted.name_ko}
+                    <span className={`ml-auto text-sm font-semibold ${SCENARIO_SEVERITY_COLOR[site.info.scenario]}`}>
+                      {SCENARIO_LABEL[site.info.scenario]}
                       {faulted && " 🚨"}
                     </span>
                   )}
