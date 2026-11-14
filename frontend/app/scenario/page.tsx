@@ -160,7 +160,7 @@ export default function ScenarioPage() {
                 {/* 실제로 주입된 시나리오 기준 가이드 - AI의 순간 예측이 아니라 이걸 써야
                     장애가 안 풀린 동안 가이드가 안정적으로 유지된다. */}
                 <ActionChecklist
-                  scenario={site.info.scenario}
+                  siteId={site.info.id}
                   onComplete={() => resolveFault(site.info.id)}
                 />
               </div>

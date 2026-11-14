@@ -183,6 +183,23 @@ export async function fetchCopilotGuide(scenario: ScenarioCode): Promise<Copilot
   return res.json();
 }
 
+/** 지연/유실/복합 7가지 세부 사례(backend/fault_tiers.py) 중 이 사이트의 실측값에 맞는 하나를 추천받는다. */
+export type FaultGuide = {
+  site: SiteId;
+  scenario: ScenarioCode;
+  case_id: string;
+  name_ko: string;
+  action_guide: string;
+  reference: string;
+  cli_command: string;
+};
+
+export async function fetchSiteGuide(siteId: SiteId): Promise<FaultGuide> {
+  const res = await fetch(`${API_BASE}/sites/${siteId}/guide`, { cache: "no-store" });
+  if (!res.ok) return throwApiError(res);
+  return res.json();
+}
+
 export type CopilotReadings = {
   rtt?: number | null;
   loss_flag?: number | null;

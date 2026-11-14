@@ -10,6 +10,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+import fault_tiers
+
 # 코파일럿(RAG 챗봇)은 실시간 진단 경로와 완전히 독립된 보조 기능이다.
 # 여기서 import 에러가 나더라도(패키지 누락, 지식베이스 JSON 문제 등) 기존 /predict,
 # /telemetry/latest, /scenario 등 핵심 엔드포인트는 절대 영향받지 않도록 격리한다.
@@ -106,7 +108,9 @@ RANDOM_INJECT_INTERVAL_SEC = 5 * 60   # 5분마다 한 번씩 무작위 사이�
 COOLDOWN_SEC = 60                      # 조치(해결) 직후 1분간은 그 사이트에 새 장애를 걸 수 없음
 FAULT_SCENARIOS = ["B", "C", "D"]      # 정상(A)을 제외한 실제 "장애" 코드만 무작위 후보로 사용
 
-_site_runtime: dict[str, dict] = {site_id: {"cooldown_until": 0.0} for site_id in SITES}
+_site_runtime: dict[str, dict] = {
+    site_id: {"cooldown_until": 0.0, "fault_started_at": None} for site_id in SITES
+}
 
 
 def _cooldown_remaining(site_id: str) -> int:
@@ -130,6 +134,7 @@ async def _random_injection_loop():
         fault = random.choice(FAULT_SCENARIOS)
         with open(SITES[target]["label_file"], "w") as f:
             f.write(fault)
+        _site_runtime[target]["fault_started_at"] = time.time()
 
 app = FastAPI(title="Net Guardian Model API")
 
@@ -235,6 +240,7 @@ def set_site_scenario(site_id: str, req: ScenarioRequest):
         )
     with open(site["label_file"], "w") as f:
         f.write(scenario)
+    _site_runtime[site_id]["fault_started_at"] = None if scenario == "A" else time.time()
     return {"site": site_id, "scenario": scenario, "cooldown_remaining": remaining,
             **SCENARIO_INFO[SCENARIO_LABEL_MAP[scenario]]}
 
@@ -246,7 +252,30 @@ def resolve_site_fault(site_id: str):
     with open(site["label_file"], "w") as f:
         f.write("A")
     _site_runtime[site_id]["cooldown_until"] = time.time() + COOLDOWN_SEC
+    _site_runtime[site_id]["fault_started_at"] = None
     return {"site": site_id, "scenario": "A", "cooldown_remaining": COOLDOWN_SEC, **SCENARIO_INFO[0]}
+
+
+@app.get("/sites/{site_id}/guide")
+def site_guide(site_id: str):
+    """지연/유실/복합 장애를 7가지 세부 사례(backend/fault_tiers.py)로 나눠, 지금 이 사이트의
+    실측값(최근 RTO초과비율, 장애 경과시간)에 맞는 사례 하나를 추천한다. 근거는
+    backend/docs/장애대응_안전기준_조사.md 참고."""
+    site = _get_site(site_id)
+    scenario = _read_current_scenario(site["label_file"])
+
+    recent_df = pd.DataFrame(columns=["rtt", "loss_flag"])
+    if os.path.exists(site["csv"]):
+        recent_df = pd.read_csv(site["csv"], on_bad_lines="skip").tail(50)[["rtt", "loss_flag"]]
+
+    started_at = _site_runtime[site_id].get("fault_started_at")
+    fault_elapsed = (time.time() - started_at) if started_at else None
+
+    case_id = fault_tiers.classify_case(scenario, recent_df, fault_elapsed)
+    case = fault_tiers.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="현재 장애가 없어 추천할 가이드가 없습니다.")
+    return {"site": site_id, "scenario": scenario, "case_id": case_id, **case}
 
 
 @app.get("/scenario")
