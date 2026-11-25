@@ -1,9 +1,31 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import { useMultiSiteTelemetry } from "@/lib/useMultiSiteTelemetry";
+import { useMultiSiteTelemetry, type SiteState } from "@/lib/useMultiSiteTelemetry";
+import type { CopilotAskContext } from "@/lib/CopilotUIContext";
 
 type MultiSiteTelemetryValue = ReturnType<typeof useMultiSiteTelemetry>;
+
+/** 특정 사이트의 "지금 이 순간" 실측값을 코파일럿에게 넘길 컨텍스트로 만든다.
+ *  어느 화면에서 코파일럿을 부르든 이 함수 하나로 "그 사이트 기준 답"을 보장한다. */
+export function buildCopilotContext(site: SiteState): CopilotAskContext {
+  const points = site.telemetry?.points ?? [];
+  const latest = points[points.length - 1];
+  return {
+    currentFault: site.info.scenario,
+    siteId: site.info.id,
+    readings: latest
+      ? {
+          rtt: latest.rtt,
+          loss_flag: latest.loss_flag,
+          jitter: latest.jitter,
+          confidence: latest.predicted.probabilities
+            ? latest.predicted.probabilities[String(latest.predicted.label)]
+            : null,
+        }
+      : undefined,
+  };
+}
 
 const MultiSiteTelemetryContext = createContext<MultiSiteTelemetryValue | null>(null);
 

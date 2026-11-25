@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
+import { useSharedMultiSiteTelemetry, buildCopilotContext } from "@/lib/MultiSiteTelemetryContext";
 import { type ScenarioCode, type SiteId } from "@/lib/api";
 import { useCopilotUI } from "@/lib/CopilotUIContext";
 import { SCENARIO_NAME_KO as SCENARIO_LABEL, SCENARIO_TEXT as SCENARIO_SEVERITY_COLOR } from "@/lib/scenarioStyles";
@@ -119,19 +119,7 @@ export default function ScenarioPage() {
                       onClick={() =>
                         askCopilot(
                           `${site.info.name}에서 지금 ${SCENARIO_LABEL[site.info.scenario]} 상황인데 어떻게 대응해야 해?`,
-                          {
-                            currentFault: site.info.scenario,
-                            readings: latest
-                              ? {
-                                  rtt: latest.rtt,
-                                  loss_flag: latest.loss_flag,
-                                  jitter: latest.jitter,
-                                  confidence: latest.predicted.probabilities
-                                    ? latest.predicted.probabilities[String(latest.predicted.label)]
-                                    : null,
-                                }
-                              : undefined,
-                          }
+                          buildCopilotContext(site)
                         )
                       }
                       className="ml-auto flex-shrink-0 rounded-full bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-400 hover:bg-blue-500/20"

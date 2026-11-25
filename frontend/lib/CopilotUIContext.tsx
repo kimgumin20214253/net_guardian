@@ -1,11 +1,12 @@
 "use client";
 
 import { createContext, useContext, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
-import type { ScenarioCode, CopilotReadings } from "@/lib/api";
+import type { ScenarioCode, CopilotReadings, SiteId } from "@/lib/api";
 
 /** 멀티사이트 대시보드처럼 "지금 보고 있는 게 site-1이 아닐 수도 있는" 화면에서,
- *  코파일럿이 자동으로 site-1을 조회하는 대신 이 값을 그대로 쓰도록 넘기는 컨텍스트. */
-export type CopilotAskContext = { currentFault: ScenarioCode; readings?: CopilotReadings };
+ *  코파일럿이 자동으로 site-1을 조회하는 대신 이 값을 그대로 쓰도록 넘기는 컨텍스트.
+ *  siteId는 필수는 아니지만 있으면 코파일럿 창의 "어느 공장" 선택기를 그 사이트로 맞춰준다. */
+export type CopilotAskContext = { currentFault: ScenarioCode; readings?: CopilotReadings; siteId?: SiteId };
 
 type CopilotUIContextValue = {
   isOpen: boolean;

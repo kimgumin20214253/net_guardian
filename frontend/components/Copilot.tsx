@@ -3,7 +3,10 @@
 import { useState, useRef, useEffect } from "react";
 import { useCopilotUI } from "@/lib/CopilotUIContext";
 import { useTelemetry } from "@/lib/TelemetryContext";
+import { useSharedMultiSiteTelemetry, buildCopilotContext } from "@/lib/MultiSiteTelemetryContext";
 import { useCopilotChat } from "@/lib/useCopilotChat";
+import { SCENARIO_DOT } from "@/lib/scenarioStyles";
+import type { SiteId } from "@/lib/api";
 
 const MIN_WIDTH = 380;
 const MIN_HEIGHT = 420;
@@ -26,6 +29,33 @@ export default function Copilot() {
     data
   );
   const listRef = useRef<HTMLDivElement>(null);
+
+  // "어느 공장 이야기인지" 선택기. 직접 타이핑할 때도 이 선택을 기준으로 답하게 해서,
+  // 질문 텍스트에 "2공장"이라고 써도 실제로는 반영이 안 되던 문제를 막는다 - 질문 텍스트는
+  // 코파일럿 RAG 검색에만 쓰이고, 어느 사이트 데이터를 쓸지는 전혀 못 읽기 때문이다.
+  const { sites } = useSharedMultiSiteTelemetry();
+  const [selectedSiteId, setSelectedSiteId] = useState<SiteId | null>(null);
+
+  // 다른 화면의 "이 공장에 대해 물어보기" 버튼으로 열렸으면 선택기도 그 공장으로 맞춘다.
+  // pendingContext는 실제 사용자 행동(askCopilot 호출)이 있을 때만 바뀌는 값이라, "렌더링 중
+  // 이전 값과 비교해서 바뀌었으면 그 자리에서 state를 조정"하는 React 권장 패턴을 쓴다
+  // (effect 안에서 setState하면 렌더가 한 번 더 생기고, sites처럼 매 폴링마다 새로 생성되는
+  // 값이 아니라서 이 비교 방식이 안전하다).
+  const [syncedContext, setSyncedContext] = useState(pendingContext);
+  if (pendingContext !== syncedContext) {
+    setSyncedContext(pendingContext);
+    if (pendingContext?.siteId) setSelectedSiteId(pendingContext.siteId);
+  }
+
+  // 아직 선택한 적 없으면: 장애 난 사이트가 있으면 그걸, 없으면 1공장을 기본값으로 보여준다.
+  // 매 폴링마다 sites가 새 배열이 되므로, 이건 state로 저장해두지 않고 그때그때 계산만 한다.
+  const resolvedSiteId = selectedSiteId ?? sites?.find((s) => s.info.scenario !== "A")?.info.id ?? sites?.[0]?.info.id ?? null;
+  const selectedSite = sites?.find((s) => s.info.id === resolvedSiteId) ?? null;
+
+  /** 직접 타이핑/빠른질문 전송 시, 선택된 공장의 실측값을 컨텍스트로 넘긴다. */
+  function sendWithSelectedSite(query: string) {
+    send(query, selectedSite ? buildCopilotContext(selectedSite) : undefined);
+  }
 
   // 패널이 화면 우측 하단에 고정되어 있으니, 왼쪽 위 모서리를 끌면 그만큼 커지는 방식으로 리사이즈한다.
   const [size, setSize] = useState(getDefaultSize);
@@ -108,6 +138,26 @@ export default function Copilot() {
             </button>
           </div>
 
+          {/* 어느 공장 이야기인지 선택 - 안 고르면 질문 텍스트의 "2공장" 같은 말은 무시되고
+              기본값(1공장)으로 답이 나가버린다. */}
+          {sites && (
+            <div className="flex items-center gap-1 border-b border-slate-700 bg-slate-800 px-3 py-2">
+              <span className="mr-1 text-xs text-slate-500">공장:</span>
+              {sites.map((s) => (
+                <button
+                  key={s.info.id}
+                  onClick={() => setSelectedSiteId(s.info.id)}
+                  className={`flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition ${
+                    resolvedSiteId === s.info.id ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${SCENARIO_DOT[s.info.scenario]}`} />
+                  {s.info.name.split(" - ")[0] ?? s.info.name}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* 대화 영역 */}
           <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto bg-slate-900 p-4">
             {messages.length === 0 && (
@@ -155,7 +205,7 @@ export default function Copilot() {
             {quickQuestions.map((q) => (
               <button
                 key={q}
-                onClick={() => send(q)}
+                onClick={() => sendWithSelectedSite(q)}
                 disabled={loading}
                 className="rounded-full bg-slate-700 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -168,7 +218,7 @@ export default function Copilot() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              send(input);
+              sendWithSelectedSite(input);
             }}
             className="flex gap-2 border-t border-slate-700 p-3"
           >
