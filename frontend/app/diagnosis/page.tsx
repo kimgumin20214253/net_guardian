@@ -1,13 +1,43 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
 import { withTransitions, type PointWithTransition } from "@/lib/transitions";
-import { SCENARIO_NAME_KO, SCENARIO_BADGE } from "@/lib/scenarioStyles";
-import { fetchSiteGuide, type FaultGuide, type SiteId } from "@/lib/api";
+import { SCENARIO_NAME_KO, SCENARIO_BADGE, SCENARIO_TEXT } from "@/lib/scenarioStyles";
+import { fetchSiteGuide, type FaultGuide, type SiteId, type TelemetryPoint } from "@/lib/api";
 
 function parseSteps(actionGuide: string): string[] {
   return actionGuide.split("\n").map((l) => l.trim()).filter(Boolean);
+}
+
+const AXIS_TICK = { fontSize: 11, fill: "#94a3b8" };
+const TOOLTIP_STYLE = { fontSize: 12, background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0" };
+
+/** 사이트별로 이미 폴링된 points에서 "AI가 매긴 신뢰도"만 뽑아 추이를 보여준다 - 새 API 없이
+ *  TelemetryPoint.predicted.probabilities[label]을 그대로 쓴다. */
+function ConfidenceTrend({ points }: { points: TelemetryPoint[] }) {
+  const data = points
+    .map((p) => ({
+      time: p.timestamp.slice(11, 19),
+      confidence: p.predicted.probabilities ? (p.predicted.probabilities[String(p.predicted.label)] ?? null) * 100 : null,
+    }))
+    .filter((d) => d.confidence !== null);
+
+  if (data.length < 2) {
+    return <p className="text-xs text-slate-500">신뢰도 추이를 표시할 데이터가 아직 부족합니다.</p>;
+  }
+
+  return (
+    <ResponsiveContainer width="100%" height={90}>
+      <LineChart data={data}>
+        <XAxis dataKey="time" tick={AXIS_TICK} interval="preserveStartEnd" />
+        <YAxis domain={[0, 100]} ticks={[0, 50, 100]} tick={AXIS_TICK} width={32} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [`${Number(v).toFixed(0)}%`, "신뢰도"]} />
+        <Line type="monotone" dataKey="confidence" stroke="#60a5fa" strokeWidth={2} dot={false} />
+      </LineChart>
+    </ResponsiveContainer>
+  );
 }
 
 export default function DiagnosisPage() {
@@ -100,6 +130,11 @@ export default function DiagnosisPage() {
                 </div>
               </div>
 
+              <div className="mb-3 rounded-md bg-slate-900 p-3">
+                <p className="mb-1 text-xs text-slate-500">신뢰도 변화 추이 (최근 수집 구간)</p>
+                <ConfidenceTrend points={points} />
+              </div>
+
               {!faulted && (
                 <p className="rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
                   ✅ 정상 상태입니다. 별도 조치가 필요하지 않습니다.
@@ -111,6 +146,11 @@ export default function DiagnosisPage() {
                   <p className="mb-1 text-sm font-semibold text-blue-200">
                     세부 진단: {guide.name_ko}
                   </p>
+                  {latest && (
+                    <p className="mb-2 text-[11px] text-blue-300/80">
+                      이 진단의 근거가 된 현재 실측값: RTT {latest.rtt.toFixed(1)}ms · Loss {latest.loss_flag} · Jitter {latest.jitter.toFixed(1)}ms
+                    </p>
+                  )}
                   <ol className="mb-2 list-inside list-decimal space-y-0.5 text-sm text-slate-300">
                     {parseSteps(guide.action_guide).map((step, i) => (
                       <li key={i}>{step.replace(/^\d+\.\s*/, "")}</li>
@@ -126,6 +166,49 @@ export default function DiagnosisPage() {
             </div>
           );
         })}
+      </div>
+
+      {/* 유형별 진단 결과 비교 - 이미 위 카드에 있는 사이트별 현재 상태를 한 표로 모아 보여준다 */}
+      <div className="mt-6 overflow-x-auto rounded-lg bg-slate-800 p-5 ring-1 ring-slate-700">
+        <h2 className="mb-4 text-lg font-semibold text-white">장애 유형별 진단 결과 비교</h2>
+        {!sites ? (
+          <p className="text-sm text-slate-400">불러오는 중입니다.</p>
+        ) : (
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-slate-700 text-slate-400">
+                <th className="p-2 text-left">사이트</th>
+                <th className="p-2 text-left">실제 시나리오</th>
+                <th className="p-2 text-left">AI 순간 판단</th>
+                <th className="p-2 text-left">신뢰도</th>
+                <th className="p-2 text-left">세부 진단 사례</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sites.map((site) => {
+                const points = site.telemetry?.points ?? [];
+                const latest = points[points.length - 1];
+                const confidence = latest?.predicted.probabilities
+                  ? latest.predicted.probabilities[String(latest.predicted.label)]
+                  : null;
+                const guide = guides[site.info.id];
+                return (
+                  <tr key={site.info.id} className="border-b border-slate-800">
+                    <td className="p-2 text-slate-200">{site.info.name}</td>
+                    <td className={`p-2 font-medium ${SCENARIO_TEXT[site.info.scenario]}`}>
+                      {SCENARIO_NAME_KO[site.info.scenario]}
+                    </td>
+                    <td className="p-2 text-slate-300">{latest ? latest.predicted.name_ko : "-"}</td>
+                    <td className="p-2 text-slate-300">
+                      {confidence !== null && confidence !== undefined ? `${(confidence * 100).toFixed(0)}%` : "-"}
+                    </td>
+                    <td className="p-2 text-slate-300">{guide ? guide.name_ko : "-"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
 
       <div className="mt-6 rounded-lg bg-slate-800 p-5 ring-1 ring-slate-700">
