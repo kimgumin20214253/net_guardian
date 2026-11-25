@@ -156,7 +156,14 @@ export default function LogsPage() {
             </tr>
           </thead>
           <tbody>
-            {filteredRows.length === 0 && (
+            {!sites && (
+              <tr>
+                <td colSpan={5} className="p-2 text-center text-slate-500">
+                  사이트 목록을 불러오는 중입니다.
+                </td>
+              </tr>
+            )}
+            {sites && filteredRows.length === 0 && (
               <tr>
                 <td colSpan={5} className="p-2 text-center text-slate-500">
                   조건에 맞는 로그가 없습니다.

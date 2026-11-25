@@ -75,6 +75,8 @@ export default function MonitoringPage() {
         </div>
       </div>
 
+      {!sites && <p className="text-sm text-slate-400">사이트 목록을 불러오는 중입니다.</p>}
+
       {latest && (
         <div className="mb-4 grid grid-cols-3 gap-4">
           {[
@@ -90,7 +92,7 @@ export default function MonitoringPage() {
         </div>
       )}
 
-      <TrafficChart points={points} injectionTime={activeSite?.lastInjectionTime ?? null} />
+      {sites && <TrafficChart points={points} injectionTime={activeSite?.lastInjectionTime ?? null} />}
     </main>
   );
 }

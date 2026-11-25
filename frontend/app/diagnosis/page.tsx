@@ -56,6 +56,8 @@ export default function DiagnosisPage() {
         </div>
       )}
 
+      {!sites && <p className="mb-6 text-sm text-slate-400">사이트 목록을 불러오는 중입니다.</p>}
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {(sites ?? []).map((site) => {
           const points = site.telemetry?.points ?? [];
@@ -128,7 +130,9 @@ export default function DiagnosisPage() {
 
       <div className="mt-6 rounded-lg bg-slate-800 p-5 ring-1 ring-slate-700">
         <h2 className="mb-4 text-lg font-semibold text-white">최근 진단 이력</h2>
-        {events.length === 0 ? (
+        {!sites ? (
+          <p className="text-sm text-slate-400">불러오는 중입니다.</p>
+        ) : events.length === 0 ? (
           <p className="text-sm text-slate-400">최근 수신한 데이터 안에서는 장애 발생/복구 이벤트가 없습니다.</p>
         ) : (
           <ul className="space-y-2 text-sm">
