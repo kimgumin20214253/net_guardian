@@ -23,13 +23,13 @@ export default function ScenarioInjectModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl"
+        className="w-full max-w-sm rounded-lg bg-slate-800 p-6 shadow-xl ring-1 ring-slate-700"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-1 text-lg font-semibold text-slate-800">
+        <h3 className="mb-1 text-lg font-semibold text-white">
           어느 네트워크에 장애를 주입시겠습니까?
         </h3>
-        <p className="mb-4 text-xs text-gray-500">주입할 시나리오: {scenarioLabel}</p>
+        <p className="mb-4 text-xs text-slate-400">주입할 시나리오: {scenarioLabel}</p>
 
         <div className="flex flex-col gap-2">
           {sites.map((site, i) => {
@@ -39,14 +39,14 @@ export default function ScenarioInjectModal({
                 key={site.id}
                 onClick={() => onPick(site.id)}
                 disabled={inCooldown}
-                className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-slate-200 disabled:hover:bg-slate-50"
+                className="rounded-md border border-slate-700 bg-slate-900 px-4 py-3 text-left transition hover:border-blue-500 hover:bg-blue-500/10 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-slate-700 disabled:hover:bg-slate-900"
               >
-                <span className="font-semibold text-slate-800">
+                <span className="font-semibold text-slate-100">
                   {REPLICA_LABELS[i] ?? site.id} (복제{i + 1})
                 </span>
-                <span className="ml-2 text-sm text-gray-500">{site.name}</span>
+                <span className="ml-2 text-sm text-slate-400">{site.name}</span>
                 {inCooldown && (
-                  <span className="ml-2 text-xs text-amber-600">
+                  <span className="ml-2 text-xs text-amber-400">
                     조치 직후 쿨다운 {site.cooldown_remaining}초 남음
                   </span>
                 )}
@@ -57,7 +57,7 @@ export default function ScenarioInjectModal({
 
         <button
           onClick={onClose}
-          className="mt-4 w-full rounded-md py-2 text-sm text-gray-400 hover:text-gray-600"
+          className="mt-4 w-full rounded-md py-2 text-sm text-slate-500 hover:text-slate-300"
         >
           취소
         </button>

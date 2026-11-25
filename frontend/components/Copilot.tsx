@@ -78,7 +78,7 @@ export default function Copilot() {
       {isOpen && (
         <div
           style={{ width: size.width, height: size.height }}
-          className="relative flex max-w-[calc(100vw-3rem)] flex-col overflow-hidden rounded-lg bg-white shadow-2xl ring-1 ring-slate-200"
+          className="relative flex max-w-[calc(100vw-3rem)] flex-col overflow-hidden rounded-lg bg-slate-800 shadow-2xl ring-1 ring-slate-700"
         >
           {/* 리사이즈 핸들 - 좌상단을 끌면 그만큼 커짐 (패널은 우하단에 고정되어 있음) */}
           <div
@@ -94,24 +94,24 @@ export default function Copilot() {
           </div>
 
           {/* 헤더 */}
-          <div className="flex items-center justify-between bg-indigo-600 px-4 py-3 text-white">
+          <div className="flex items-center justify-between bg-blue-600 px-4 py-3 text-white">
             <div className="pl-4">
               <p className="font-semibold">현장 트러블슈팅 Copilot</p>
-              <p className="text-xs text-indigo-100">매뉴얼 기반 조치 가이드 보조 도구</p>
+              <p className="text-xs text-blue-100">매뉴얼 기반 조치 가이드 보조 도구</p>
             </div>
             <button
               onClick={() => setIsOpen(false)}
               aria-label="닫기"
-              className="rounded p-1 text-indigo-100 hover:bg-indigo-500 hover:text-white"
+              className="rounded p-1 text-blue-100 hover:bg-blue-500 hover:text-white"
             >
               ✕
             </button>
           </div>
 
           {/* 대화 영역 */}
-          <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4">
+          <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto bg-slate-900 p-4">
             {messages.length === 0 && (
-              <p className="text-base text-slate-400">
+              <p className="text-base text-slate-500">
                 아래 빠른 질문을 누르거나, 궁금한 조치 방법을 직접 입력해보세요.
               </p>
             )}
@@ -120,13 +120,13 @@ export default function Copilot() {
                 <div
                   className={`max-w-[85%] rounded-lg px-4 py-2.5 text-base leading-relaxed whitespace-pre-wrap ${
                     m.role === "user"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-white text-slate-800 ring-1 ring-slate-200"
+                      ? "bg-blue-600 text-white"
+                      : "bg-slate-800 text-slate-200 ring-1 ring-slate-700"
                   }`}
                 >
                   {m.text}
                   {m.role === "assistant" && m.source && (
-                    <div className="mt-2 border-t border-slate-200 pt-1.5 text-xs text-slate-400">
+                    <div className="mt-2 border-t border-slate-700 pt-1.5 text-xs text-slate-500">
                       출처: {m.source}
                       {m.fallbackUsed && " · 간이 응답(매뉴얼 원문)"}
                     </div>
@@ -136,28 +136,28 @@ export default function Copilot() {
             ))}
             {loading && (
               <div className="flex justify-start">
-                <div className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm text-slate-400 ring-1 ring-slate-200">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-slate-400" />
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-slate-400 [animation-delay:150ms]" />
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-slate-400 [animation-delay:300ms]" />
+                <div className="flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-2 text-sm text-slate-500 ring-1 ring-slate-700">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-slate-500" />
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-slate-500 [animation-delay:150ms]" />
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-slate-500 [animation-delay:300ms]" />
                 </div>
               </div>
             )}
             {error && (
-              <div className="rounded-md border-l-4 border-red-500 bg-red-50 p-2 text-xs text-red-700">
+              <div className="rounded-md border-l-4 border-red-500 bg-red-500/10 p-2 text-xs text-red-300">
                 {error}
               </div>
             )}
           </div>
 
           {/* 빠른 질문 */}
-          <div className="flex flex-wrap gap-1.5 border-t border-slate-200 bg-white px-3 py-2">
+          <div className="flex flex-wrap gap-1.5 border-t border-slate-700 bg-slate-800 px-3 py-2">
             {quickQuestions.map((q) => (
               <button
                 key={q}
                 onClick={() => send(q)}
                 disabled={loading}
-                className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-full bg-slate-700 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {q}
               </button>
@@ -170,19 +170,19 @@ export default function Copilot() {
               e.preventDefault();
               send(input);
             }}
-            className="flex gap-2 border-t border-slate-200 p-3"
+            className="flex gap-2 border-t border-slate-700 p-3"
           >
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="조치 방법을 물어보세요"
               disabled={loading}
-              className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-base outline-none focus:border-indigo-500 disabled:opacity-60"
+              className="flex-1 rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-base text-slate-100 outline-none placeholder:text-slate-500 focus:border-blue-500 disabled:opacity-60"
             />
             <button
               type="submit"
               disabled={loading || !input.trim()}
-              className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               전송
             </button>
@@ -194,10 +194,10 @@ export default function Copilot() {
       <button
         onClick={() => setIsOpen((v) => !v)}
         aria-label={isOpen ? "트러블슈팅 코파일럿 닫기" : "트러블슈팅 코파일럿 열기"}
-        className="group relative flex items-center gap-3 rounded-full bg-indigo-600 py-4 pl-5 pr-6 text-white shadow-xl ring-4 ring-indigo-600/20 transition hover:bg-indigo-700 hover:shadow-2xl"
+        className="group relative flex items-center gap-3 rounded-full bg-blue-600 py-4 pl-5 pr-6 text-white shadow-xl ring-4 ring-blue-600/20 transition hover:bg-blue-500 hover:shadow-2xl"
       >
         {!isOpen && (
-          <span className="motion-safe:animate-ping absolute inset-0 -z-10 rounded-full bg-indigo-500 opacity-40" />
+          <span className="motion-safe:animate-ping absolute inset-0 -z-10 rounded-full bg-blue-500 opacity-40" />
         )}
         <span className="text-3xl leading-none">{isOpen ? "✕" : "🛠️"}</span>
         <span className="text-base font-semibold whitespace-nowrap">

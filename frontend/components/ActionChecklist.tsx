@@ -82,23 +82,23 @@ export default function ActionChecklist({
   }
 
   return (
-    <div className="mt-4 rounded-md border border-indigo-200 bg-indigo-50 p-4">
+    <div className="mt-4 rounded-md border border-blue-500/30 bg-blue-500/5 p-4">
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <p className="font-semibold text-indigo-900">초동 조치 체크리스트</p>
-          <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-medium text-indigo-600">
+          <p className="font-semibold text-blue-200">초동 조치 체크리스트</p>
+          <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] font-medium text-blue-300">
             AI 추천: {guide.name_ko}
           </span>
         </div>
         {!isObservationOnly && (
-          <span className="text-xs text-indigo-500">
+          <span className="text-xs text-blue-300">
             {doneCount}/{steps.length} 완료
           </span>
         )}
       </div>
 
       {isObservationOnly ? (
-        <p className="rounded-md border border-indigo-200 bg-white px-3 py-2.5 text-sm text-slate-700">
+        <p className="rounded-md border border-blue-500/30 bg-slate-900 px-3 py-2.5 text-sm text-slate-300">
           {steps[0]}
         </p>
       ) : (
@@ -112,19 +112,19 @@ export default function ActionChecklist({
                 disabled={done}
                 className={`flex w-full items-center gap-2.5 rounded-md border px-3 py-2.5 text-left text-sm transition ${
                   done
-                    ? "cursor-default border-green-200 bg-green-50 text-green-700"
-                    : "border-indigo-200 bg-white text-slate-800 hover:border-indigo-400 hover:bg-indigo-100"
+                    ? "cursor-default border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                    : "border-blue-500/30 bg-slate-900 text-slate-200 hover:border-blue-400 hover:bg-blue-500/10"
                 }`}
               >
                 <span
                   className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                    done ? "bg-green-500 text-white" : "bg-indigo-100 text-indigo-600"
+                    done ? "bg-emerald-500 text-white" : "bg-blue-500/20 text-blue-300"
                   }`}
                 >
                   {done ? "✓" : i + 1}
                 </span>
                 <span className={done ? "line-through" : ""}>{step}</span>
-                <span className="ml-auto flex-shrink-0 text-xs font-medium text-indigo-400">
+                <span className="ml-auto flex-shrink-0 text-xs font-medium text-blue-300">
                   {done ? "조치 완료" : "눌러서 조치"}
                 </span>
               </button>
@@ -134,27 +134,27 @@ export default function ActionChecklist({
       )}
 
       {allDone && (
-        <p className="mt-3 rounded-md bg-green-100 px-3 py-2 text-sm font-medium text-green-700">
+        <p className="mt-3 rounded-md bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-300">
           ✅ 초동 조치를 모두 완료했습니다. 정상 상태로 복귀하고, 1분간 이 네트워크에는 새 장애가
           걸리지 않습니다.
         </p>
       )}
 
       {guide.cli_command && (
-        <div className="mt-3 flex items-center gap-2 rounded bg-white px-3 py-2 ring-1 ring-indigo-100">
-          <code className="flex-1 overflow-x-auto whitespace-nowrap text-xs text-slate-700">
+        <div className="mt-3 flex items-center gap-2 rounded bg-slate-900 px-3 py-2 ring-1 ring-blue-500/20">
+          <code className="flex-1 overflow-x-auto whitespace-nowrap text-xs text-slate-300">
             {guide.cli_command}
           </code>
           <button
             onClick={copyCommand}
-            className="flex-shrink-0 rounded bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700"
+            className="flex-shrink-0 rounded bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-500"
           >
             {copied ? "복사됨 ✓" : "복사"}
           </button>
         </div>
       )}
 
-      <p className="mt-2 text-[11px] text-indigo-400">참고: {guide.reference}</p>
+      <p className="mt-2 text-[11px] text-blue-400/70">참고: {guide.reference}</p>
     </div>
   );
 }

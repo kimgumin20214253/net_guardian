@@ -17,9 +17,9 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     title: "MONITORING",
     items: [
       { href: "/", label: "종합 관제", icon: "🛰️" },
-      { href: "", label: "네트워크 토폴로지", icon: "🕸️", disabled: true },
+      { href: "/topology", label: "네트워크 토폴로지", icon: "🕸️" },
       { href: "/monitoring", label: "실시간 모니터링", icon: "📡" },
-      { href: "", label: "AI 장애 진단", icon: "🧠", disabled: true },
+      { href: "/diagnosis", label: "AI 장애 진단", icon: "🧠" },
     ],
   },
   {

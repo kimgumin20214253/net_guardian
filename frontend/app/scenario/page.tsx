@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useMultiSiteTelemetry } from "@/lib/useMultiSiteTelemetry";
 import { type ScenarioCode, type SiteId } from "@/lib/api";
 import { useCopilotUI } from "@/lib/CopilotUIContext";
+import { SCENARIO_NAME_KO as SCENARIO_LABEL, SCENARIO_TEXT as SCENARIO_SEVERITY_COLOR } from "@/lib/scenarioStyles";
 import ActionChecklist from "@/components/ActionChecklist";
 import ScenarioInjectModal from "@/components/ScenarioInjectModal";
 import TrafficChart from "@/components/TrafficChart";
@@ -14,17 +15,6 @@ const SCENARIO_BUTTONS: { code: ScenarioCode; label: string }[] = [
   { code: "C", label: "유실 장애" },
   { code: "D", label: "복합 장애" },
 ];
-
-const SCENARIO_LABEL: Record<ScenarioCode, string> = { A: "정상", B: "지연 장애", C: "유실 장애", D: "복합 장애" };
-
-// 실제 주입된 시나리오 기준 색상 - AI의 순간 예측(latest.predicted.severity)으로 색을 입히면
-// 유실/복합 장애에서 대부분 샘플이 정상처럼 보여 색이 계속 바뀐다.
-const SCENARIO_SEVERITY_COLOR: Record<ScenarioCode, string> = {
-  A: "text-green-600",
-  B: "text-yellow-600",
-  C: "text-red-600",
-  D: "text-purple-600",
-};
 
 export default function ScenarioPage() {
   const { sites, error, pending, injectScenario, resolveFault } = useMultiSiteTelemetry();
@@ -41,37 +31,37 @@ export default function ScenarioPage() {
   }
 
   return (
-    <main className="p-8">
-      <h1 className="mb-2 text-3xl font-bold">장애 시나리오 제어</h1>
-      <p className="mb-6 text-sm text-gray-500">
+    <main className="p-8 text-slate-100">
+      <h1 className="mb-2 text-2xl font-bold text-white">🎛️ 장애 시뮬레이션</h1>
+      <p className="mb-6 text-sm text-slate-400">
         버튼으로 공장을 골라 장애를 직접 주입하거나, 5분마다 자동으로 무작위 주입되는 것을
         기다려보세요. 장애가 난 공장은 그래프 아래에 바로 대응 체크리스트가 나타나고, 전부
         완료하면 자동으로 정상 복귀 후 1분간 재발을 막습니다.
       </p>
 
       {error && (
-        <div className="mb-6 rounded-md border-l-4 border-red-500 bg-red-50 p-4 text-red-700">
+        <div className="mb-6 rounded-md border-l-4 border-red-500 bg-red-500/10 p-4 text-red-300">
           {error}
         </div>
       )}
 
       {/* ① 시나리오 주입 */}
-      <div className="rounded-lg bg-white p-6 shadow">
-        <h2 className="mb-4 text-xl font-semibold">① 시나리오 주입</h2>
+      <div className="rounded-lg bg-slate-800 p-6 ring-1 ring-slate-700">
+        <h2 className="mb-4 text-lg font-semibold text-white">① 시나리오 주입</h2>
         <div className="flex flex-wrap gap-3">
           {SCENARIO_BUTTONS.map(({ code, label }) => (
             <button
               key={code}
               onClick={() => setPendingInjectScenario(code)}
               disabled={pending !== null || !sites}
-              className="rounded-md bg-slate-100 px-4 py-2 font-semibold text-slate-700 shadow transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md bg-slate-700 px-4 py-2 font-semibold text-slate-100 ring-1 ring-slate-600 transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {code} · {label}
             </button>
           ))}
         </div>
         {pending && (
-          <p className="mt-3 text-sm text-gray-500">
+          <p className="mt-3 text-sm text-slate-400">
             {sites?.find((s) => s.info.id === pending.siteId)?.info.name ?? pending.siteId}에{" "}
             {SCENARIO_LABEL[pending.scenario]} 주입 중...
           </p>
@@ -90,10 +80,10 @@ export default function ScenarioPage() {
 
       {/* ② 공장별 상태 - 그래프와 대응 체크리스트를 공장 하나당 카드 하나에 같이 둬서,
           어느 그래프가 어느 체크리스트 건지 눈으로 다시 찾아 맞출 필요가 없게 한다. */}
-      <div className="mt-6 rounded-lg bg-white p-6 shadow">
-        <h2 className="mb-4 text-xl font-semibold">② 공장별 상태</h2>
+      <div className="mt-6 rounded-lg bg-slate-800 p-6 ring-1 ring-slate-700">
+        <h2 className="mb-4 text-lg font-semibold text-white">② 공장별 상태</h2>
 
-        {!sites && <p className="text-sm text-gray-400">사이트 목록을 불러오는 중입니다.</p>}
+        {!sites && <p className="text-sm text-slate-400">사이트 목록을 불러오는 중입니다.</p>}
 
         <div className="space-y-8">
           {(sites ?? []).map((site) => {
@@ -107,14 +97,14 @@ export default function ScenarioPage() {
             return (
               <div
                 key={site.info.id}
-                className={`rounded-lg p-4 transition ${
-                  faulted ? "ring-2 ring-red-500" : "ring-1 ring-slate-100"
+                className={`rounded-lg bg-slate-900 p-4 transition ${
+                  faulted ? "ring-2 ring-red-500/60" : "ring-1 ring-slate-800"
                 }`}
               >
                 <div className="mb-3 flex items-center gap-3">
-                  <span className="font-semibold text-slate-800">{site.info.name}</span>
+                  <span className="font-semibold text-slate-100">{site.info.name}</span>
                   {site.info.cooldown_remaining > 0 && (
-                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-600">
+                    <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">
                       쿨다운 {site.info.cooldown_remaining}초
                     </span>
                   )}
@@ -144,7 +134,7 @@ export default function ScenarioPage() {
                           }
                         )
                       }
-                      className="ml-auto flex-shrink-0 rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-100"
+                      className="ml-auto flex-shrink-0 rounded-full bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-400 hover:bg-blue-500/20"
                     >
                       🛠️ AI 코파일럿에게 물어보기
                     </button>
