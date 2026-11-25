@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSharedMultiSiteTelemetry, buildCopilotContext } from "@/lib/MultiSiteTelemetryContext";
-import { type ScenarioCode, type SiteId } from "@/lib/api";
+import { type ScenarioCode, type SiteId, type TelemetryPoint } from "@/lib/api";
+import type { SiteState } from "@/lib/useMultiSiteTelemetry";
 import { useCopilotUI } from "@/lib/CopilotUIContext";
 import { SCENARIO_NAME_KO as SCENARIO_LABEL, SCENARIO_TEXT as SCENARIO_SEVERITY_COLOR } from "@/lib/scenarioStyles";
 import ActionChecklist from "@/components/ActionChecklist";
@@ -16,6 +17,42 @@ const SCENARIO_BUTTONS: { code: ScenarioCode; label: string }[] = [
   { code: "D", label: "복합 장애" },
 ];
 
+type Stats = { rtt: number; loss: number; jitter: number };
+type RecoverySnapshot = { before: Stats; elapsedMs: number };
+
+function avgStats(points: TelemetryPoint[]): Stats | null {
+  if (points.length === 0) return null;
+  return {
+    rtt: points.reduce((a, p) => a + p.rtt, 0) / points.length,
+    loss: points.reduce((a, p) => a + p.loss_flag, 0) / points.length,
+    jitter: points.reduce((a, p) => a + p.jitter, 0) / points.length,
+  };
+}
+
+/** lastInjectionTime(주입 직전 마지막 샘플의 timestamp)을 기준으로 points를 "주입 전/후"로
+ *  나눠 각각 평균을 구한다. 백엔드 자동 주입(5분 주기)처럼 lastInjectionTime이 없는 경우는
+ *  비교할 기준점이 없으므로 null을 반환한다(값을 지어내지 않음). */
+function beforeAfterStats(points: TelemetryPoint[], injectionTime: string | null) {
+  if (!injectionTime) return null;
+  const idx = points.findIndex((p) => p.timestamp === injectionTime);
+  if (idx === -1) return null;
+  const before = avgStats(points.slice(0, idx + 1));
+  const after = avgStats(points.slice(idx + 1));
+  if (!before || !after) return null;
+  return { before, after };
+}
+
+function formatElapsed(ms: number) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function formatStats(s: Stats) {
+  return `RTT ${s.rtt.toFixed(1)}ms · Loss ${(s.loss * 100).toFixed(0)}% · Jitter ${s.jitter.toFixed(1)}ms`;
+}
+
 export default function ScenarioPage() {
   const { sites, error, pending, injectScenario, resolveFault } = useSharedMultiSiteTelemetry();
   const { askCopilot } = useCopilotUI();
@@ -28,6 +65,51 @@ export default function ScenarioPage() {
       await injectScenario(siteId, pendingInjectScenario);
     }
     setPendingInjectScenario(null);
+  }
+
+  // 장애 지속 시간 - 백엔드가 장애 시작 시각을 따로 안 주므로, "이 화면이 장애 전환을 감지한
+  // 실제 시각(Date.now())"부터 잰다(수동 주입이든 5분 자동 주입이든 동일하게 잡힌다).
+  const [faultStartAt, setFaultStartAt] = useState<Partial<Record<SiteId, number>>>({});
+  const [recoverySnapshot, setRecoverySnapshot] = useState<Partial<Record<SiteId, RecoverySnapshot>>>({});
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // 렌더 중에 "지금 scenario 조합"과 "마지막으로 반영했던 조합"을 비교해서, 실제로 바뀐
+  // 순간에만 상태를 갱신한다(Copilot.tsx의 pendingContext 동기화와 같은 패턴 - useEffect
+  // 안에서 setState를 부르지 않는다).
+  const scenarioSnapshot = (sites ?? []).map((s) => `${s.info.id}:${s.info.scenario}`).join(",");
+  const [prevScenarioSnapshot, setPrevScenarioSnapshot] = useState(scenarioSnapshot);
+  if (scenarioSnapshot !== prevScenarioSnapshot) {
+    const started = { ...faultStartAt };
+    const snapshots = { ...recoverySnapshot };
+    for (const site of sites ?? []) {
+      if (site.info.scenario === "A") {
+        delete started[site.info.id];
+      } else if (!(site.info.id in started)) {
+        started[site.info.id] = now; // 1초 단위로 갱신되는 now(state)를 쓴다 - 렌더 중 Date.now() 직접 호출 금지
+        delete snapshots[site.info.id]; // 새로 장애가 시작됐으니 지난 복구 비교는 지운다
+      }
+    }
+    setFaultStartAt(started);
+    setRecoverySnapshot(snapshots);
+    setPrevScenarioSnapshot(scenarioSnapshot);
+  }
+
+  function handleResolve(site: SiteState) {
+    const recent = (site.telemetry?.points ?? []).slice(-10);
+    const before = avgStats(recent);
+    const start = faultStartAt[site.info.id];
+    if (before) {
+      setRecoverySnapshot((prev) => ({
+        ...prev,
+        [site.info.id]: { before, elapsedMs: start ? Date.now() - start : 0 },
+      }));
+    }
+    resolveFault(site.info.id);
   }
 
   return (
@@ -93,6 +175,9 @@ export default function ScenarioPage() {
             // 장애는 대부분의 개별 요청이 정상처럼 보여서, 순간 예측 기준이면 테두리와 체크리스트가
             // 장애 중에도 계속 깜빡이며 사라졌다 나타난다.
             const faulted = site.info.scenario !== "A";
+            const startedAt = faultStartAt[site.info.id];
+            const compare = faulted ? beforeAfterStats(points, site.lastInjectionTime) : null;
+            const recovery = !faulted ? recoverySnapshot[site.info.id] : undefined;
 
             return (
               <div
@@ -114,6 +199,11 @@ export default function ScenarioPage() {
                       {faulted && " 🚨"}
                     </span>
                   )}
+                  {faulted && startedAt && (
+                    <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-300">
+                      ⏱ 경과 {formatElapsed(now - startedAt)}
+                    </span>
+                  )}
                   {faulted && (
                     <button
                       onClick={() =>
@@ -131,8 +221,26 @@ export default function ScenarioPage() {
 
                 <TrafficChart points={points} injectionTime={site.lastInjectionTime} />
 
+                {compare && (
+                  <div className="mt-3 rounded-md bg-slate-800 p-3 text-xs">
+                    <p className="mb-1 font-medium text-slate-300">주입 전/후 비교</p>
+                    <p className="text-slate-400">전: {formatStats(compare.before)}</p>
+                    <p className="text-slate-400">후: {formatStats(compare.after)}</p>
+                  </div>
+                )}
+
+                {recovery && (
+                  <div className="mt-3 rounded-md bg-emerald-500/5 p-3 text-xs ring-1 ring-emerald-500/20">
+                    <p className="mb-1 font-medium text-emerald-300">
+                      ✅ 최근 복구 비교 · 장애 지속 {formatElapsed(recovery.elapsedMs)}
+                    </p>
+                    <p className="text-slate-400">복구 전(최근 10건 평균): {formatStats(recovery.before)}</p>
+                    {latest && <p className="text-slate-400">복구 후(현재): {formatStats({ rtt: latest.rtt, loss: latest.loss_flag, jitter: latest.jitter })}</p>}
+                  </div>
+                )}
+
                 {faulted && (
-                  <ActionChecklist siteId={site.info.id} onComplete={() => resolveFault(site.info.id)} />
+                  <ActionChecklist siteId={site.info.id} onComplete={() => handleResolve(site)} />
                 )}
               </div>
             );
