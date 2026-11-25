@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMultiSiteTelemetry } from "@/lib/useMultiSiteTelemetry";
 import { type ScenarioCode, type SiteId } from "@/lib/api";
+import { useCopilotUI } from "@/lib/CopilotUIContext";
 import ActionChecklist from "@/components/ActionChecklist";
 import ScenarioInjectModal from "@/components/ScenarioInjectModal";
 import TrafficChart from "@/components/TrafficChart";
@@ -27,6 +28,7 @@ const SCENARIO_SEVERITY_COLOR: Record<ScenarioCode, string> = {
 
 export default function ScenarioPage() {
   const { sites, error, pending, injectScenario, resolveFault } = useMultiSiteTelemetry();
+  const { askCopilot } = useCopilotUI();
 
   // 모달에 띄울 "지금 주입하려는 시나리오". null이면 모달 닫힘.
   const [pendingInjectScenario, setPendingInjectScenario] = useState<ScenarioCode | null>(null);
@@ -148,23 +150,52 @@ export default function ScenarioPage() {
           <p className="text-sm text-gray-400">현재 장애가 감지된 네트워크가 없습니다.</p>
         ) : (
           <div className="space-y-6">
-            {faultedSites.map((site) => (
-              <div key={site.info.id}>
-                <p className="mb-1 text-sm font-semibold text-red-600">
-                  🚨 {site.info.name} — {SCENARIO_LABEL[site.info.scenario]}
-                </p>
-                <p className="mb-2 text-xs text-gray-400">
-                  체크리스트를 전부 완료하면 자동으로 정상 상태로 복귀하고, 1분간 이 네트워크에는
-                  새 장애가 걸리지 않습니다.
-                </p>
-                {/* 실제로 주입된 시나리오 기준 가이드 - AI의 순간 예측이 아니라 이걸 써야
-                    장애가 안 풀린 동안 가이드가 안정적으로 유지된다. */}
-                <ActionChecklist
-                  siteId={site.info.id}
-                  onComplete={() => resolveFault(site.info.id)}
-                />
-              </div>
-            ))}
+            {faultedSites.map((site) => {
+              const points = site.telemetry?.points ?? [];
+              const latest = points[points.length - 1];
+              return (
+                <div key={site.info.id}>
+                  <div className="mb-1 flex items-center justify-between">
+                    <p className="text-sm font-semibold text-red-600">
+                      🚨 {site.info.name} — {SCENARIO_LABEL[site.info.scenario]}
+                    </p>
+                    <button
+                      onClick={() =>
+                        askCopilot(
+                          `${site.info.name}에서 지금 ${SCENARIO_LABEL[site.info.scenario]} 상황인데 어떻게 대응해야 해?`,
+                          {
+                            currentFault: site.info.scenario,
+                            readings: latest
+                              ? {
+                                  rtt: latest.rtt,
+                                  loss_flag: latest.loss_flag,
+                                  jitter: latest.jitter,
+                                  confidence: latest.predicted.probabilities
+                                    ? latest.predicted.probabilities[String(latest.predicted.label)]
+                                    : null,
+                                }
+                              : undefined,
+                          }
+                        )
+                      }
+                      className="flex-shrink-0 rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-100"
+                    >
+                      🛠️ 이 공장에 대해 AI 코파일럿에게 물어보기
+                    </button>
+                  </div>
+                  <p className="mb-2 text-xs text-gray-400">
+                    체크리스트를 전부 완료하면 자동으로 정상 상태로 복귀하고, 1분간 이 네트워크에는
+                    새 장애가 걸리지 않습니다.
+                  </p>
+                  {/* 실제로 주입된 시나리오 기준 가이드 - AI의 순간 예측이 아니라 이걸 써야
+                      장애가 안 풀린 동안 가이드가 안정적으로 유지된다. */}
+                  <ActionChecklist
+                    siteId={site.info.id}
+                    onComplete={() => resolveFault(site.info.id)}
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

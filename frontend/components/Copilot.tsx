@@ -19,7 +19,7 @@ function getDefaultSize() {
 }
 
 export default function Copilot() {
-  const { isOpen, setIsOpen, pendingQuery, clearPendingQuery } = useCopilotUI();
+  const { isOpen, setIsOpen, pendingQuery, pendingContext, clearPendingQuery } = useCopilotUI();
   const { scenario, data } = useTelemetry();
   const { messages, input, setInput, loading, error, quickQuestions, send } = useCopilotChat(
     scenario?.scenario ?? null,
@@ -67,7 +67,7 @@ export default function Copilot() {
   // 다른 화면의 "코파일럿에게 물어보기" 버튼이 채워준 질문을 감지해 자동 전송
   useEffect(() => {
     if (pendingQuery) {
-      send(pendingQuery);
+      send(pendingQuery, pendingContext ?? undefined);
       clearPendingQuery();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

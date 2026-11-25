@@ -6,7 +6,9 @@ import {
   fetchScenario,
   type ScenarioCode,
   type TelemetryResponse,
+  type CopilotReadings,
 } from "@/lib/api";
+import type { CopilotAskContext } from "@/lib/CopilotUIContext";
 
 export type ChatMessage = {
   role: "user" | "assistant";
@@ -33,7 +35,7 @@ export function useCopilotChat(scenarioCode: ScenarioCode | null, data: Telemetr
   const quickQuestions = QUICK_QUESTIONS_BY_SCENARIO[scenarioCode ?? "A"];
   const latest = data?.points[data.points.length - 1];
 
-  async function send(query: string) {
+  async function send(query: string, override?: CopilotAskContext) {
     const q = query.trim();
     if (!q || loading) return;
 
@@ -42,24 +44,28 @@ export function useCopilotChat(scenarioCode: ScenarioCode | null, data: Telemetr
     setLoading(true);
     setError(null);
 
-    let currentFault: ScenarioCode | null = null;
-    try {
-      const status = await fetchScenario();
-      currentFault = status.scenario;
-    } catch {
-      // 현재 시나리오 조회 실패해도 질문 자체는 계속 보낸다 (컨텍스트 없이 검색만 수행)
+    // override가 있으면(예: 멀티사이트 대시보드에서 특정 공장을 짚어서 물어본 경우) 그 사이트의
+    // 시나리오/실측값을 그대로 쓴다 - 없으면 기존처럼 site-1(단일 사이트 화면)을 자동 조회한다.
+    let currentFault: ScenarioCode | null = override?.currentFault ?? null;
+    let readings: CopilotReadings | undefined = override?.readings;
+    if (!override) {
+      try {
+        const status = await fetchScenario();
+        currentFault = status.scenario;
+      } catch {
+        // 현재 시나리오 조회 실패해도 질문 자체는 계속 보낸다 (컨텍스트 없이 검색만 수행)
+      }
+      readings = latest
+        ? {
+            rtt: latest.rtt,
+            loss_flag: latest.loss_flag,
+            jitter: latest.jitter,
+            confidence: latest.predicted.probabilities
+              ? latest.predicted.probabilities[String(latest.predicted.label)]
+              : null,
+          }
+        : undefined;
     }
-
-    const readings = latest
-      ? {
-          rtt: latest.rtt,
-          loss_flag: latest.loss_flag,
-          jitter: latest.jitter,
-          confidence: latest.predicted.probabilities
-            ? latest.predicted.probabilities[String(latest.predicted.label)]
-            : null,
-        }
-      : undefined;
 
     try {
       const res = await sendCopilotMessage(q, currentFault, readings);
