@@ -4,6 +4,8 @@ __pycache__/
 *.zip
 *.csv.e91
 .current_label
+.current_label_site*
+backend/logs/
 data/
 
 # Next.js (app/, components/)
