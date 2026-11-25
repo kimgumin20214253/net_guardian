@@ -58,6 +58,6 @@ do
     sudo tc qdisc replace dev $INTERFACE root netem delay 300ms 100ms loss 5%
     sleep 5
     sudo tc qdisc del dev $INTERFACE root 2>/dev/null
-
+    sleep 10
     echo "--------------------------------------------------------"
 done

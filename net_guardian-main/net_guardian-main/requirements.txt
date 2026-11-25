@@ -1,0 +1,5 @@
+scikit-learn==1.4.*
+lightgbm==4.3.*
+marimo==0.6.*
+pandas==2.2.*
+numpy==1.26.*

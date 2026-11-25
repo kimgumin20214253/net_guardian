@@ -1,0 +1,1 @@
+[!] data\net_guardian_scenario_dataset_site3.csv의 컬럼(['2026-11-12 16:53:41', '2.32', '0', '0.73', '2'])이 지금 설정(['timestamp', 'rtt', 'loss_flag', 'jitter', 'label'])과 다릅니다. PA_OUTPUT_FILE로 새 파일 이름을 지정하세요.

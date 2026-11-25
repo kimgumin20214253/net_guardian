@@ -49,8 +49,8 @@ def system_diagram():
 
 
 def retrans_rtt():
-    plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 7})
-    fig, axes = plt.subplots(2, 1, figsize=(3.3, 3.6), sharey=True, dpi=600)
+    plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 9})
+    fig, axes = plt.subplots(1, 2, figsize=(1536 / 200, 700 / 200), sharey=True, dpi=200)  # 좌우 배치, 1536x700 px
     for ax, (c, name) in zip(axes, [("A", "Normal (A)"), ("C", "Loss (C)")]):
         t = pd.read_csv(os.path.join(BASE_DIR, "raw_dataset_20261004", f"retrans_{c}.csv")).reset_index(drop=True)
         ok, to = t[t.loss_flag == 0], t[t.loss_flag == 1]
@@ -59,14 +59,14 @@ def retrans_rtt():
             ax.scatter(to.index, [1500] * len(to), s=14, marker="x", color=K, linewidths=0.9)
         ax.axhline(200, color="#666666", lw=0.7, ls="--", zorder=0)  # Linux 최소 RTO
         ax.set_yscale("log"); ax.set_ylim(1, 2500); ax.set_xlim(-10, 590)
-        ax.set_title(f"{name}: {len(t)} requests, {int(t.loss_flag.sum())} timeouts", fontsize=7, pad=3)
-        ax.set_ylabel("RTT (ms)")
+        ax.set_title(f"{name}: {len(t)} requests, {int(t.loss_flag.sum())} timeouts", fontsize=9, pad=4)
+        ax.set_xlabel("Request number (60 s)")
         for s in ["top", "right"]:
             ax.spines[s].set_visible(False)
-        ax.text(585, 215, "200 ms", ha="right", va="bottom", fontsize=6, color="#444444")
-    axes[1].set_xlabel("Request number (60 s)")
-    axes[1].text(470, 1500, "x = timeout", va="center", fontsize=6, color=K)
-    fig.tight_layout(h_pad=0.8)
+        ax.text(585, 215, "200 ms", ha="right", va="bottom", fontsize=8, color="#444444")
+    axes[0].set_ylabel("RTT (ms)")
+    axes[1].text(450, 1500, "x = timeout", va="center", fontsize=8, color=K)
+    fig.tight_layout(w_pad=1.5)
     fig.savefig(os.path.join(OUT_DIR, "fig_retrans_rtt_bw.png"))
     plt.close(fig)
 
