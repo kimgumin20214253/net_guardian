@@ -9,6 +9,8 @@ import {
   type CopilotReadings,
 } from "@/lib/api";
 import type { CopilotAskContext } from "@/lib/CopilotUIContext";
+import type { SiteState } from "@/lib/useMultiSiteTelemetry";
+import { buildAggregateAnswer } from "@/lib/copilotAggregateAnswers";
 
 export type ChatMessage = {
   role: "user" | "assistant";
@@ -26,7 +28,14 @@ const QUICK_QUESTIONS_BY_SCENARIO: Record<ScenarioCode, string[]> = {
 
 // 플로팅 위젯과 /copilot 전용 페이지가 공통으로 쓰는 대화 로직.
 // 각 사용처가 독립적으로 이 훅을 호출하므로, 둘의 대화 내역은 서로 분리된다(의도된 동작).
-export function useCopilotChat(scenarioCode: ScenarioCode | null, data: TelemetryResponse | null) {
+// sites(멀티사이트 실시간 상태)를 넘기면 "전체 요약"/"가장 심각한 사이트" 같은 질문을 백엔드
+// 매뉴얼 RAG로 보내지 않고 그 자리에서 직접 답한다(buildAggregateAnswer) - 매뉴얼 4~5개는
+// 장애 유형 하나에 대한 설명일 뿐이라 여러 사이트를 비교하는 질문에는 애초에 맞는 문서가 없다.
+export function useCopilotChat(
+  scenarioCode: ScenarioCode | null,
+  data: TelemetryResponse | null,
+  sites: SiteState[] | null = null
+) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -41,8 +50,15 @@ export function useCopilotChat(scenarioCode: ScenarioCode | null, data: Telemetr
 
     setMessages((prev) => [...prev, { role: "user", text: q }]);
     setInput("");
-    setLoading(true);
     setError(null);
+
+    const aggregateAnswer = buildAggregateAnswer(q, sites);
+    if (aggregateAnswer !== null) {
+      setMessages((prev) => [...prev, { role: "assistant", text: aggregateAnswer, source: "실시간 사이트 상태(매뉴얼 검색 미사용)" }]);
+      return;
+    }
+
+    setLoading(true);
 
     // override가 있으면(예: 멀티사이트 대시보드에서 특정 공장을 짚어서 물어본 경우) 그 사이트의
     // 시나리오/실측값을 그대로 쓴다 - 없으면 기존처럼 site-1(단일 사이트 화면)을 자동 조회한다.

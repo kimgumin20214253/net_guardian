@@ -1,4 +1,4 @@
-import type { ScenarioCode } from "@/lib/api";
+import type { ScenarioCode, Severity } from "@/lib/api";
 
 // 실제로 주입된 시나리오(ground truth) 기준 표시용 공용 상수. 여러 화면(종합 관제/모니터링/
 // 시나리오/AI 진단)이 똑같은 색상·이름을 쓰도록 한 곳에 모아둔다.
@@ -36,3 +36,10 @@ export const SCENARIO_TEXT: Record<ScenarioCode, string> = {
 // (정수)을 시나리오 코드로 되돌릴 때 쓴다 - 백엔드가 이미 쓰는 매핑을 그대로 가져온 것이라 새로
 // 지어낸 기준이 아니다.
 export const LABEL_TO_SCENARIO: Record<number, ScenarioCode> = { 0: "A", 1: "B", 2: "C", 3: "D" };
+
+// backend/api/main.py의 SCENARIO_INFO[label]["severity"]와 동일한 매핑. AI가 샘플 1건을 보고
+// 매기는 severity(유실·복합은 흔들릴 수 있음)가 아니라, "이 시나리오 자체의 고정된 심각도"다 -
+// 여러 사이트 중 어디가 더 심각한지 비교할 때는 이 기준을 쓴다.
+export const SCENARIO_CANONICAL_SEVERITY: Record<ScenarioCode, Severity> = {
+  A: "ok", B: "warning", C: "danger", D: "critical",
+};

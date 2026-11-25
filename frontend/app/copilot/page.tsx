@@ -2,14 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTelemetry } from "@/lib/TelemetryContext";
+import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
 import { useCopilotChat } from "@/lib/useCopilotChat";
+import { GLOBAL_QUICK_QUESTIONS } from "@/lib/copilotAggregateAnswers";
 import { fetchAllCopilotGuides, type CopilotGuide } from "@/lib/api";
 
 export default function CopilotPage() {
   const { scenario, data } = useTelemetry();
+  const { sites } = useSharedMultiSiteTelemetry();
   const { messages, input, setInput, loading, error, quickQuestions, send } = useCopilotChat(
     scenario?.scenario ?? null,
-    data
+    data,
+    sites
   );
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -139,6 +143,18 @@ export default function CopilotPage() {
             )}
           </div>
 
+          <div className="flex flex-wrap gap-1.5 border-t border-slate-700 bg-slate-800 px-3 py-2">
+            {GLOBAL_QUICK_QUESTIONS.map((q) => (
+              <button
+                key={q}
+                onClick={() => send(q)}
+                disabled={loading}
+                className="rounded-full bg-indigo-500/10 px-2.5 py-1 text-xs text-indigo-300 hover:bg-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
           <div className="flex flex-wrap gap-1.5 border-t border-slate-700 bg-slate-800 px-3 py-2">
             {quickQuestions.map((q) => (
               <button

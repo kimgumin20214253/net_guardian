@@ -31,6 +31,52 @@ function levelFor(p: LogRow) {
   return p.transition === "recovered" ? "RECOVERED" : LEVEL_BY_SEVERITY[p.predicted.severity];
 }
 
+type FaultDuration = {
+  siteName: string;
+  startedAt: string;
+  recoveredAt: string;
+  durationMs: number;
+};
+
+/** fault_started -> 그 다음에 오는 recovered(같은 사이트)를 짝지어 지속시간을 구한다.
+ *  아직 복구되지 않은 장애(짝이 없는 fault_started)는 포함하지 않는다 - 끝나지 않은 걸
+ *  지속시간으로 보여주면 숫자를 지어내는 셈이 되기 때문이다. */
+function pairFaultDurations(rows: LogRow[]): FaultDuration[] {
+  const bySite = new Map<SiteId, LogRow[]>();
+  for (const r of rows) {
+    if (!r.transition) continue;
+    const list = bySite.get(r.siteId) ?? [];
+    list.push(r);
+    bySite.set(r.siteId, list);
+  }
+  const results: FaultDuration[] = [];
+  for (const [, events] of bySite) {
+    const sorted = [...events].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    let pendingStart: LogRow | null = null;
+    for (const ev of sorted) {
+      if (ev.transition === "fault_started") {
+        pendingStart = ev;
+      } else if (ev.transition === "recovered" && pendingStart) {
+        results.push({
+          siteName: ev.siteName,
+          startedAt: pendingStart.timestamp,
+          recoveredAt: ev.timestamp,
+          durationMs: new Date(ev.timestamp).getTime() - new Date(pendingStart.timestamp).getTime(),
+        });
+        pendingStart = null;
+      }
+    }
+  }
+  return results.sort((a, b) => b.recoveredAt.localeCompare(a.recoveredAt));
+}
+
+function formatDuration(ms: number) {
+  const totalSec = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 function toCsv(rows: LogRow[]) {
   const header = "timestamp,site,name_ko,severity,level,rtt,loss_flag,jitter,transition";
   const lines = rows.map((p) =>
@@ -81,6 +127,11 @@ function LogsPageInner() {
   const [severityFilter, setSeverityFilter] = useState("all");
   const [siteFilter, setSiteFilter] = useState<SiteId | "all">(linkedSiteId);
   const [keyword, setKeyword] = useState("");
+  // datetime-local 입력은 "YYYY-MM-DDTHH:mm" 형식이라, 수신 데이터의 ISO timestamp와 문자열
+  // 비교만으로 앞부분 15글자가 맞아떨어진다(둘 다 사전식 비교가 시간 순서와 일치하는 형식).
+  const [fromTime, setFromTime] = useState("");
+  const [toTime, setToTime] = useState("");
+  const [selectedRow, setSelectedRow] = useState<LogRow | null>(null);
 
   const filteredRows = useMemo(() => {
     return allRows.filter((p) => {
@@ -89,9 +140,13 @@ function LogsPageInner() {
       if (severityFilter !== "all" && severityFilter !== "recovered" && p.predicted.severity !== severityFilter)
         return false;
       if (keyword.trim() && !p.predicted.name_ko.includes(keyword.trim())) return false;
+      if (fromTime && p.timestamp < fromTime) return false;
+      if (toTime && p.timestamp > toTime) return false;
       return true;
     });
-  }, [allRows, severityFilter, siteFilter, keyword]);
+  }, [allRows, severityFilter, siteFilter, keyword, fromTime, toTime]);
+
+  const faultDurations = useMemo(() => pairFaultDurations(filteredRows), [filteredRows]);
 
   function exportCsv() {
     const csv = toCsv(filteredRows);
@@ -150,6 +205,19 @@ function LogsPageInner() {
           placeholder="진단명 검색 (예: 지연 장애)"
           className="min-w-[180px] flex-1 rounded-md border border-slate-600 bg-slate-900 px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-500"
         />
+        <input
+          type="datetime-local"
+          value={fromTime}
+          onChange={(e) => setFromTime(e.target.value)}
+          className="rounded-md border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-200"
+        />
+        <span className="text-xs text-slate-500">~</span>
+        <input
+          type="datetime-local"
+          value={toTime}
+          onChange={(e) => setToTime(e.target.value)}
+          className="rounded-md border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-200"
+        />
         <span className="text-xs text-slate-500">{filteredRows.length}건</span>
         <button
           onClick={exportCsv}
@@ -159,6 +227,20 @@ function LogsPageInner() {
           CSV 내보내기
         </button>
       </div>
+
+      {/* fault_started -> recovered 페어링으로 지속시간 계산 (완료된 구간만) */}
+      {faultDurations.length > 0 && (
+        <div className="mb-4 rounded-lg bg-slate-800 p-4 ring-1 ring-slate-700">
+          <h2 className="mb-2 text-sm font-semibold text-white">장애 지속시간 요약 (복구 완료된 구간만)</h2>
+          <div className="flex flex-wrap gap-2 text-xs">
+            {faultDurations.slice(0, 10).map((d, i) => (
+              <span key={i} className="rounded-full bg-slate-900 px-2.5 py-1 text-slate-300 ring-1 ring-slate-700">
+                {d.siteName} · {d.startedAt.slice(11, 19)}→{d.recoveredAt.slice(11, 19)} · {formatDuration(d.durationMs)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-lg bg-slate-800 p-6 ring-1 ring-slate-700">
         <table className="w-full border-collapse">
@@ -192,7 +274,8 @@ function LogsPageInner() {
               .map((p, i) => (
                 <tr
                   key={`${p.siteId}-${p.timestamp}-${i}`}
-                  className={`border-b border-slate-800 ${p.transition ? "bg-slate-700/30 font-medium" : ""}`}
+                  onClick={() => setSelectedRow(p)}
+                  className={`cursor-pointer border-b border-slate-800 hover:bg-slate-700/50 ${p.transition ? "bg-slate-700/30 font-medium" : ""}`}
                 >
                   <td className="p-2 text-slate-300">{p.timestamp}</td>
                   <td className="p-2 text-slate-300">{p.siteName}</td>
@@ -211,6 +294,41 @@ function LogsPageInner() {
           </tbody>
         </table>
       </div>
+
+      {/* 행 클릭 상세 모달 */}
+      {selectedRow && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setSelectedRow(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg bg-slate-800 p-6 shadow-xl ring-1 ring-slate-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-3 text-lg font-semibold text-white">이벤트 상세</h3>
+            <div className="space-y-1.5 text-sm text-slate-300">
+              <p>시간: {selectedRow.timestamp}</p>
+              <p>사이트: {selectedRow.siteName}</p>
+              <p>AI 진단: {selectedRow.predicted.name_ko}</p>
+              <p className={SEVERITY_TEXT_COLOR[selectedRow.predicted.severity]}>레벨: {levelFor(selectedRow)}</p>
+              <p>RTT: {selectedRow.rtt.toFixed(1)}ms</p>
+              <p>Packet Loss: {selectedRow.loss_flag}</p>
+              <p>Jitter: {selectedRow.jitter.toFixed(1)}ms</p>
+              {selectedRow.transition && (
+                <p className={selectedRow.transition === "recovered" ? "text-emerald-400" : "text-red-400"}>
+                  변화: {selectedRow.transition === "recovered" ? "✅ 정상 복구" : "🚨 장애 발생"}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => setSelectedRow(null)}
+              className="mt-4 w-full rounded-md py-2 text-sm text-slate-500 hover:text-slate-300"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

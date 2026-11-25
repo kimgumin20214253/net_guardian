@@ -5,6 +5,7 @@ import { useCopilotUI } from "@/lib/CopilotUIContext";
 import { useTelemetry } from "@/lib/TelemetryContext";
 import { useSharedMultiSiteTelemetry, buildCopilotContext } from "@/lib/MultiSiteTelemetryContext";
 import { useCopilotChat } from "@/lib/useCopilotChat";
+import { GLOBAL_QUICK_QUESTIONS } from "@/lib/copilotAggregateAnswers";
 import { SCENARIO_DOT } from "@/lib/scenarioStyles";
 import type { SiteId } from "@/lib/api";
 
@@ -24,17 +25,19 @@ function getDefaultSize() {
 export default function Copilot() {
   const { isOpen, setIsOpen, pendingQuery, pendingContext, clearPendingQuery } = useCopilotUI();
   const { scenario, data } = useTelemetry();
-  const { messages, input, setInput, loading, error, quickQuestions, send } = useCopilotChat(
-    scenario?.scenario ?? null,
-    data
-  );
-  const listRef = useRef<HTMLDivElement>(null);
 
   // "어느 공장 이야기인지" 선택기. 직접 타이핑할 때도 이 선택을 기준으로 답하게 해서,
   // 질문 텍스트에 "2공장"이라고 써도 실제로는 반영이 안 되던 문제를 막는다 - 질문 텍스트는
   // 코파일럿 RAG 검색에만 쓰이고, 어느 사이트 데이터를 쓸지는 전혀 못 읽기 때문이다.
   const { sites } = useSharedMultiSiteTelemetry();
   const [selectedSiteId, setSelectedSiteId] = useState<SiteId | null>(null);
+
+  const { messages, input, setInput, loading, error, quickQuestions, send } = useCopilotChat(
+    scenario?.scenario ?? null,
+    data,
+    sites
+  );
+  const listRef = useRef<HTMLDivElement>(null);
 
   // 다른 화면의 "이 공장에 대해 물어보기" 버튼으로 열렸으면 선택기도 그 공장으로 맞춘다.
   // pendingContext는 실제 사용자 행동(askCopilot 호출)이 있을 때만 바뀌는 값이라, "렌더링 중
@@ -200,7 +203,22 @@ export default function Copilot() {
             )}
           </div>
 
-          {/* 빠른 질문 */}
+          {/* 전체 네트워크 추천 질문 - 특정 공장이 아니라 3개 사이트 전체를 묻는 질문이라
+              아래 "공장별 빠른 질문"과는 별도 줄로 둔다. */}
+          <div className="flex flex-wrap gap-1.5 border-t border-slate-700 bg-slate-800 px-3 py-2">
+            {GLOBAL_QUICK_QUESTIONS.map((q) => (
+              <button
+                key={q}
+                onClick={() => sendWithSelectedSite(q)}
+                disabled={loading}
+                className="rounded-full bg-indigo-500/10 px-2.5 py-1 text-xs text-indigo-300 hover:bg-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+
+          {/* 공장별 빠른 질문 */}
           <div className="flex flex-wrap gap-1.5 border-t border-slate-700 bg-slate-800 px-3 py-2">
             {quickQuestions.map((q) => (
               <button

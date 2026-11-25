@@ -44,6 +44,9 @@ SCENARIO_TO_DOC_ID = {
 }
 
 
+CONFIDENT_SIMILARITY = 0.12  # 이 값 이상이면 질문 자체만으로 특정 문서를 충분히 가리킨다고 본다
+
+
 def retrieve_top1(query: str, current_fault: str | None = None):
     """질문(+현재 장애 상태)과 가장 유사한 매뉴얼 문서 1건을 코사인 유사도로 검색.
 
@@ -51,16 +54,30 @@ def retrieve_top1(query: str, current_fault: str | None = None):
     TfidfVectorizer의 기본 토크나이저(token_pattern)는 2글자 이상인 토큰만 단어로 인식해서
     한 글자짜리 코드가 그냥 통째로 버려졌다 - 그래서 current_fault는 실제로 검색 결과에
     아무 영향을 못 줬다(단어장에 'a'/'b'/'c'/'d'가 존재하지 않는 것으로 직접 확인됨).
-    지금은 코드를 그대로 쓰는 대신, 그 시나리오에 해당하는 매뉴얼 문서 자신의 본문
-    (증상/추정원인)을 검색어에 실제로 섞어 넣는다 - 이 단어들은 전부 TF-IDF 단어장에 이미
-    있는 단어라서, 짧은 질문이 애매하더라도 지금 장애 쪾 매뉴얼로 확실히 끌려간다."""
-    fault_doc = get_guide_for_scenario(current_fault) if current_fault else None
-    fault_hint = f"{fault_doc['symptom']} {fault_doc['root_cause']}" if fault_doc else ""
-    combined_query = f"{fault_hint} {query}".strip()
-    q_vec = _vectorizer.transform([combined_query])
+
+    그다음엔 그 시나리오 문서의 증상/추정원인 텍스트를 검색어 앞에 그대로 이어붙이는 방식으로
+    고쳤는데, 이번엔 반대 방향 문제가 생겼다: "TCP 재전송과 RTO의 관계를 설명해 줘"처럼 질문
+    자체가 이미 충분히 구체적인 경우에도, 이어붙인 힌트 텍스트가 TF-IDF 유사도를 더 크게
+    끌어올려서 엉뚱한(현재 장애의) 문서가 1위로 뽑혔다 - 직접 재현해서 확인된 버그
+    (current_fault='C'인 상태에서 이 질문을 해도 유실 장애 문서가 나옴).
+
+    지금은 텍스트를 섞지 않는다. 먼저 질문 자체만으로 코사인 유사도를 계산해보고, 그중 1위
+    점수가 CONFIDENT_SIMILARITY 이상이면("질문만으로도 충분히 뭘 묻는지 알겠다") 그 결과를
+    그대로 쓴다. 점수가 그보다 낮으면("지금 어떻게 해야해?"처럼 질문 자체에 단서가 거의 없음)
+    그제서야 current_fault에 해당하는 문서로 기본 라우팅한다. 두 극단(아주 구체적인 질문 /
+    아주 모호한 질문) 모두에서 올바른 문서를 고르는지 직접 여러 케이스로 재현해서 확인했다."""
+    q_vec = _vectorizer.transform([query])
     sims = cosine_similarity(q_vec, _doc_matrix)[0]
-    idx = int(sims.argmax())
-    return DOCUMENTS[idx], float(sims[idx])
+    best_idx = int(sims.argmax())
+    best_score = float(sims[best_idx])
+    if best_score >= CONFIDENT_SIMILARITY or not current_fault:
+        return DOCUMENTS[best_idx], best_score
+
+    fault_doc = get_guide_for_scenario(current_fault)
+    if not fault_doc:
+        return DOCUMENTS[best_idx], best_score
+    fault_idx = next(i for i, d in enumerate(DOCUMENTS) if d["doc_id"] == fault_doc["doc_id"])
+    return DOCUMENTS[fault_idx], float(sims[fault_idx])
 
 
 def _format_readings(readings: dict | None) -> str | None:

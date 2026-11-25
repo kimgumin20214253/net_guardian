@@ -40,6 +40,15 @@
       "root_cause": "특이사항 없음",
       "action_guide": "1. 정상 통신 상태 기준선(baseline) 지속 로깅\n2. 정기적인 통신 감사 로그 보관",
       "cli_command": "ping -c 5 -i 0.2 127.0.0.1"
+    },
+    {
+      "doc_id": "ICS-NET-05",
+      "scenario": "진단 알고리즘 설명 (TCP 재전송 / RTO)",
+      "reference": "RFC 6298 (Computing TCP's Retransmission Timer) + Karn's Algorithm. 이 프로젝트의 실제 구현: backend/fault_tiers.py의 _tcp_rto_features()",
+      "symptom": "RTT가 순간적으로 치솟는 샘플이 반복되면, 그중 일부는 실제 지연이 아니라 '재전송이 있었을 가능성이 높은 샘플'일 수 있습니다",
+      "root_cause": "이 프로젝트는 실제 TCP 재전송 세그먼트 수(retrans_segs)를 라이브 수집 경로에서 직접 모으지 않는 대신, RFC 6298 공식 RTO = max(200ms, SRTT + 4*RTTVAR)으로 사이트별 RTO를 추정하고, RTT가 그 추정 RTO를 넘으면 rto_exceed(재전송 추정) 샘플로 표시합니다. Karn 알고리즘에 따라 그렇게 추정된 샘플은 SRTT/RTTVAR 갱신에서 제외해, 튄 값 하나가 평균 자체를 같이 튀게 만들지 않도록 합니다.",
+      "action_guide": "1. 지연(B) 장애 중 최근 15건의 rto_exceed 비율이 0보다 크면 '순수 지연'이 아니라 재전송 신호가 섞인 것으로 보고 더 적극적으로 조치\n2. 유실(C) 장애는 최근 15건 중 rto_exceed 건수(0~4건 이상)로 세부 단계를 나눔 - 건수가 많을수록 심각\n3. 복합(D) 장애는 응답 자체가 없는 샘플이 많아 RTO 피처가 거의 안 걸리므로, 대신 손실률(loss_rate)로 단계를 나눔",
+      "cli_command": "backend/fault_tiers.py의 _tcp_rto_features() 참고 (RTO_MIN_MS=200)"
     }
   ]
 }
