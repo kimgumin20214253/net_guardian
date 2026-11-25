@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMultiSiteTelemetry } from "@/lib/useMultiSiteTelemetry";
+import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
 import { SCENARIO_NAME_KO, SCENARIO_BADGE, SCENARIO_DOT } from "@/lib/scenarioStyles";
 import type { SiteId } from "@/lib/api";
 
@@ -14,7 +14,7 @@ const NODE_META: Record<NodeKind, { label: string; icon: string }> = {
 };
 
 export default function TopologyPage() {
-  const { sites, error } = useMultiSiteTelemetry();
+  const { sites, error } = useSharedMultiSiteTelemetry();
   const [activeSiteId, setActiveSiteId] = useState<SiteId | null>(null);
   const [selectedNode, setSelectedNode] = useState<NodeKind | null>(null);
 
