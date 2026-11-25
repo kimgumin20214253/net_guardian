@@ -40,7 +40,7 @@ export default async function RootLayout({
         <TelemetryProvider initial={initial}>
           <CopilotUIProvider>
             <Sidebar />
-            <div className="flex-1 overflow-y-auto bg-slate-100">{children}</div>
+            <div className="flex-1 overflow-y-auto bg-slate-900">{children}</div>
             {/* 실시간 진단 대시보드와 완전히 독립된 보조 위젯 - 에러 바운더리로 격리 */}
             <CopilotErrorBoundary>
               <Copilot />

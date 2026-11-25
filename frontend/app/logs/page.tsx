@@ -75,7 +75,7 @@ export default function LogsPage() {
     <main className="p-8">
       <h1 className="mb-2 text-3xl font-bold">이벤트 로그</h1>
       <p className="mb-6 text-sm text-gray-500">
-        최근 진단 이력입니다. 상태가 바뀌는 시점은 "🚨 장애 발생" / "✅ 정상 복구"로 자동 표시됩니다.
+        최근 진단 이력입니다. 상태가 바뀌는 시점은 &quot;🚨 장애 발생&quot; / &quot;✅ 정상 복구&quot;로 자동 표시됩니다.
       </p>
 
       {error && (

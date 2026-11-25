@@ -1,166 +1,310 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useTelemetry } from "@/lib/TelemetryContext";
-import { SEVERITY_TEXT_COLOR, SEVERITY_BG_COLOR } from "@/lib/severityStyles";
-import { fetchStatsSummary, type StatsSummary, type ScenarioCode, type Severity } from "@/lib/api";
+import { useMultiSiteTelemetry, type SiteState } from "@/lib/useMultiSiteTelemetry";
+import { withTransitions, type PointWithTransition } from "@/lib/transitions";
+import TrafficChart from "@/components/TrafficChart";
+import type { ScenarioCode, SiteId } from "@/lib/api";
 
-const RESEARCH_BADGES = ["L4 경량 지표 3종 기반", "L7 페이로드 비열람", "실측 데이터 기반 검증"];
-
-// 상단 상태 배너는 AI의 순간 예측(predicted.severity)이 아니라 실제로 주입된 시나리오(ground
-// truth) 기준으로 보여준다 - 유실/복합 장애는 개별 요청 대부분이 정상처럼 보여, 순간 예측만
-// 따라가면 "정상"과 "장애"가 계속 깜빡인다 (/scenario 페이지에서 이미 같은 문제를 고친 바 있음).
 const SCENARIO_NAME_KO: Record<ScenarioCode, string> = {
   A: "정상", B: "지연 장애", C: "유실 장애", D: "복합 장애",
 };
-const SCENARIO_SEVERITY: Record<ScenarioCode, Severity> = {
-  A: "ok", B: "warning", C: "danger", D: "critical",
+// 다크 네이비 배경에 맞춘 상태 배지 색상 (정상=초록, 주의/위험=노랑·빨강, 복합=보라)
+const SCENARIO_BADGE: Record<ScenarioCode, string> = {
+  A: "bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/30",
+  B: "bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/30",
+  C: "bg-red-500/10 text-red-400 ring-1 ring-red-500/30",
+  D: "bg-purple-500/10 text-purple-400 ring-1 ring-purple-500/30",
+};
+const SCENARIO_DOT: Record<ScenarioCode, string> = {
+  A: "bg-emerald-400", B: "bg-amber-400", C: "bg-red-400", D: "bg-purple-400",
+};
+const SCENARIO_RING: Record<ScenarioCode, string> = {
+  A: "ring-1 ring-slate-700", B: "ring-2 ring-amber-500/60",
+  C: "ring-2 ring-red-500/60", D: "ring-2 ring-purple-500/60",
 };
 
-const FEATURE_CARDS = [
-  { href: "/scenario", icon: "🎛️", title: "장애 시나리오 제어", desc: "직접 장애를 주입하고 실시간으로 대응을 연습하세요" },
-  { href: "/monitoring", icon: "📡", title: "실시간 모니터링", desc: "RTT·손실·지터 추이를 실시간 차트로 확인하세요" },
-  { href: "/logs", icon: "📋", title: "이벤트 로그", desc: "과거 진단 이력을 조회하고 CSV로 내보내세요" },
-  { href: "/copilot", icon: "🛠️", title: "AI 코파일럿", desc: "현장 매뉴얼 기반 대응 가이드를 물어보세요" },
-];
+const POINT_COUNT_OPTIONS = [50, 100, 200];
+
+function latestOf(site: SiteState) {
+  const points = site.telemetry?.points ?? [];
+  return points[points.length - 1] ?? null;
+}
+
+function formatClock(timestamp: string | undefined) {
+  if (!timestamp) return "-";
+  return timestamp.slice(11, 19) || timestamp;
+}
 
 export default function HomePage() {
-  const { data, scenario, error } = useTelemetry();
-  const points = data?.points ?? [];
-  const latest = points[points.length - 1];
+  const [pointCount, setPointCount] = useState(50);
+  const { sites, error } = useMultiSiteTelemetry(pointCount);
+  const [chartSiteId, setChartSiteId] = useState<SiteId | null>(null);
 
-  const [stats, setStats] = useState<StatsSummary | null>(null);
+  const totalSites = sites?.length ?? 0;
+  const faultedSites = useMemo(() => (sites ?? []).filter((s) => s.info.scenario !== "A"), [sites]);
+  const normalCount = totalSites - faultedSites.length;
 
-  useEffect(() => {
-    fetchStatsSummary()
-      .then(setStats)
-      .catch(() => setStats(null));
-  }, []);
+  // 평균 RTT와 손실 현황은 "실제로 값이 있는 사이트"만으로 계산한다 - 데이터가 아예 없는 사이트를
+  // 0으로 쳐서 평균을 왜곡시키지 않기 위함.
+  const rttValues = (sites ?? [])
+    .map((s) => latestOf(s)?.rtt)
+    .filter((v): v is number => typeof v === "number");
+  const avgRtt = rttValues.length ? rttValues.reduce((a, b) => a + b, 0) / rttValues.length : null;
+  const lossSiteCount = (sites ?? []).filter((s) => latestOf(s)?.loss_flag === 1).length;
+
+  const dataSource = sites?.find((s) => s.telemetry)?.telemetry?.source ?? null;
+  const lastUpdated = (sites ?? [])
+    .map((s) => latestOf(s)?.timestamp)
+    .filter((t): t is string => !!t)
+    .sort()
+    .at(-1);
+
+  const activeChartSiteId = chartSiteId ?? faultedSites[0]?.info.id ?? sites?.[0]?.info.id ?? null;
+  const activeSite = (sites ?? []).find((s) => s.info.id === activeChartSiteId) ?? null;
+
+  // 최근 이벤트 - AI의 순간 예측이 아니라 실제 주입된 시나리오(true_label) 기준으로 장애
+  // 발생/복구 시점을 감지한다 (3개 사이트를 합쳐 시간순으로 정리). 실제 수신한 데이터에서만
+  // 뽑으므로, 이 창에 잡힌 전환이 없으면 그냥 "최근 이벤트 없음"으로 둔다.
+  const events = useMemo(() => {
+    if (!sites) return [];
+    type EventRow = PointWithTransition & { siteName: string };
+    const rows: EventRow[] = sites.flatMap((s) =>
+      withTransitions(s.telemetry?.points ?? [])
+        .filter((p) => p.transition)
+        .map((p) => ({ ...p, siteName: s.info.name }))
+    );
+    return rows.sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 8);
+  }, [sites]);
 
   return (
-    <main className="p-8">
-      {/* 헤더 */}
-      <h1 className="mb-1 text-3xl font-bold">NET GUARDIAN</h1>
-      <p className="mb-3 text-base font-medium text-slate-600">
-        L4 경량 지표 기반 실시간 장애 원인 진단 모니터링 시스템
-      </p>
-      <div className="mb-6 flex flex-wrap gap-2">
-        {RESEARCH_BADGES.map((b) => (
-          <span key={b} className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
-            {b}
+    <main className="p-8 text-slate-100">
+      {/* 상단 헤더 */}
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-white">
+            🛰️ NET GUARDIAN <span className="text-slate-500">종합 관제</span>
+          </h1>
+          <p className="mt-0.5 text-sm font-medium tracking-wide text-slate-500">
+            INDUSTRIAL NETWORK CONTROL CENTER
+          </p>
+        </div>
+        <div className="flex items-center gap-3 rounded-lg bg-slate-800 px-4 py-2 ring-1 ring-slate-700">
+          <span className={`flex items-center gap-1.5 text-sm font-medium ${error ? "text-red-400" : "text-emerald-400"}`}>
+            <span className={`h-2 w-2 rounded-full ${error ? "bg-red-400" : "bg-emerald-400"}`} />
+            {error ? "연결 끊김" : "시스템 정상 연결"}
           </span>
-        ))}
-      </div>
+          <span className="text-slate-600">·</span>
+          <span className="text-sm text-slate-400">
+            마지막 갱신 {formatClock(lastUpdated)}
+          </span>
+          <span className="text-slate-600">·</span>
+          <span className="text-sm text-slate-400">
+            {dataSource === "live" ? "🟢 실시간 데이터" : dataSource === "demo" ? "⚪ 데모 데이터" : "-"}
+          </span>
+        </div>
+      </header>
 
       {error && (
-        <div className="mb-6 rounded-md border-l-4 border-red-500 bg-red-50 p-4 text-red-700">
+        <div className="mb-6 rounded-md border-l-4 border-red-500 bg-red-500/10 p-4 text-red-300">
           {error}
         </div>
       )}
 
-      {/* 현재 상태 배너 - 실제로 주입된 시나리오(ground truth) 기준 */}
-      <div className="mb-6 flex flex-wrap items-center gap-3 rounded-lg bg-white px-5 py-4 shadow">
-        <span
-          className={`h-4 w-4 rounded-full ${scenario ? SEVERITY_BG_COLOR[SCENARIO_SEVERITY[scenario.scenario]].replace("-50", "-500") : "bg-slate-300"}`}
-        />
-        <span className={`text-lg font-semibold ${scenario ? SEVERITY_TEXT_COLOR[SCENARIO_SEVERITY[scenario.scenario]] : "text-slate-400"}`}>
-          {scenario ? SCENARIO_NAME_KO[scenario.scenario] : "대기 중"}
-        </span>
-        {latest && (
-          <span className="text-base text-gray-500">
-            RTT {latest.rtt.toFixed(1)}ms · AI 진단 신뢰도{" "}
-            {latest.predicted.probabilities
-              ? `${(latest.predicted.probabilities[String(latest.predicted.label)] * 100).toFixed(0)}%`
-              : "-"}
-          </span>
-        )}
-        <span className="ml-auto text-sm text-gray-400">
-          {data?.source === "live" ? "🟢 실시간 데이터" : "⚪ 데모 데이터"}
-        </span>
-      </div>
-
-      {/* 핵심 기능 바로가기 */}
-      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {FEATURE_CARDS.map((f) => (
-          <Link
-            key={f.href}
-            href={f.href}
-            className="rounded-lg bg-white p-5 shadow transition hover:shadow-md hover:ring-2 hover:ring-indigo-200"
-          >
-            <div className="mb-2 text-2xl">{f.icon}</div>
-            <p className="font-semibold text-slate-800">{f.title}</p>
-            <p className="mt-1 text-sm text-gray-500">{f.desc}</p>
-          </Link>
+      {/* KPI 카드 */}
+      <section className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+        {[
+          { icon: "🏭", label: "전체 사이트", value: sites ? totalSites : "-" },
+          { icon: "✅", label: "정상 사이트", value: sites ? normalCount : "-", tone: "text-emerald-400" },
+          { icon: "🚨", label: "장애 사이트", value: sites ? faultedSites.length : "-", tone: faultedSites.length > 0 ? "text-red-400" : "text-slate-100" },
+          { icon: "⏱️", label: "평균 RTT", value: avgRtt !== null ? `${avgRtt.toFixed(1)}ms` : "-" },
+          { icon: "📉", label: "손실 감지 사이트", value: sites ? `${lossSiteCount}/${totalSites}` : "-" },
+        ].map((kpi) => (
+          <div key={kpi.label} className="rounded-lg bg-slate-800 p-4 ring-1 ring-slate-700">
+            <div className="mb-1 flex items-center gap-2 text-sm text-slate-400">
+              <span>{kpi.icon}</span>
+              {kpi.label}
+            </div>
+            <p className={`text-2xl font-bold ${kpi.tone ?? "text-slate-100"}`}>{kpi.value}</p>
+          </div>
         ))}
-      </div>
+      </section>
 
-      {/* 시스템 파이프라인 - 실측값 실시간 표시 */}
-      <div className="mb-8 rounded-lg bg-white p-6 shadow">
-        <h2 className="mb-4 text-lg font-semibold">시스템 파이프라인</h2>
-        <div className="flex flex-wrap items-stretch gap-2 text-sm">
-          <div className="rounded-md bg-slate-100 px-3 py-2">
-            <p className="font-medium text-slate-700">① Modbus TCP 통신</p>
-            <p className="mt-1 text-xs text-slate-500">
-              포트 5020 · {data?.source === "live" ? "🟢 실시간 연결" : "⚪ 데모 모드"}
-            </p>
-          </div>
-          <span className="self-center text-gray-300">▶</span>
-          <div className="rounded-md bg-slate-100 px-3 py-2">
-            <p className="font-medium text-slate-700">② 실측 지연/유실 재현</p>
-            <p className="mt-1 text-xs text-slate-500">
-              {scenario ? `${scenario.scenario} · RTT ${latest ? latest.rtt.toFixed(1) : "-"}ms` : "-"}
-            </p>
-          </div>
-          <span className="self-center text-gray-300">▶</span>
-          <div className={`rounded-md px-3 py-2 ${latest ? SEVERITY_BG_COLOR[latest.predicted.severity] : "bg-slate-100"}`}>
-            <p className="font-medium text-slate-700">③ L4 경량 AI 진단</p>
-            <p className={`mt-1 text-xs ${latest ? SEVERITY_TEXT_COLOR[latest.predicted.severity] : "text-slate-500"}`}>
-              {latest && latest.predicted.probabilities
-                ? `${latest.predicted.name_ko} (${(latest.predicted.probabilities[String(latest.predicted.label)] * 100).toFixed(1)}%)`
-                : "-"}
-            </p>
-          </div>
-          <span className="self-center text-gray-300">▶</span>
-          <div className="rounded-md bg-slate-100 px-3 py-2">
-            <p className="font-medium text-slate-700">④ 대응 가이드 표출</p>
-            <p className="mt-1 text-xs text-slate-500">
-              {scenario && scenario.scenario !== "A" ? "⚠️ 가이드 활성" : "대기 중"}
-            </p>
+      {/* 사이트별 네트워크 상태 */}
+      <section className="mb-6 rounded-lg bg-slate-800 p-5 ring-1 ring-slate-700">
+        <h2 className="mb-4 text-lg font-semibold text-white">사이트별 네트워크 상태</h2>
+
+        {!sites && <p className="text-sm text-slate-400">사이트 목록을 불러오는 중입니다.</p>}
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          {(sites ?? []).map((site) => {
+            const latest = latestOf(site);
+            const confidence = latest?.predicted.probabilities
+              ? latest.predicted.probabilities[String(latest.predicted.label)]
+              : null;
+            return (
+              <button
+                key={site.info.id}
+                onClick={() => setChartSiteId(site.info.id)}
+                className={`flex flex-col gap-2 rounded-lg bg-slate-900 p-4 text-left transition hover:bg-slate-900/70 ${SCENARIO_RING[site.info.scenario]} ${
+                  activeChartSiteId === site.info.id ? "outline outline-2 outline-blue-500" : ""
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-100">{site.info.name}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${SCENARIO_BADGE[site.info.scenario]}`}>
+                    <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${SCENARIO_DOT[site.info.scenario]}`} />
+                    {SCENARIO_NAME_KO[site.info.scenario]}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500">포트 {site.info.port}</p>
+
+                <div className="mt-1 grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <p className="text-[11px] text-slate-500">RTT</p>
+                    <p className="text-sm font-semibold text-slate-100">{latest ? `${latest.rtt.toFixed(1)}ms` : "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-500">Loss</p>
+                    <p className="text-sm font-semibold text-slate-100">{latest ? latest.loss_flag : "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-500">Jitter</p>
+                    <p className="text-sm font-semibold text-slate-100">{latest ? `${latest.jitter.toFixed(1)}ms` : "-"}</p>
+                  </div>
+                </div>
+
+                <div className="mt-1 flex items-center justify-between border-t border-slate-800 pt-2 text-xs">
+                  <span className="text-slate-400">
+                    AI 진단: <span className="font-medium text-slate-200">{latest ? latest.predicted.name_ko : "-"}</span>
+                    {confidence !== null && confidence !== undefined && ` (${(confidence * 100).toFixed(0)}%)`}
+                  </span>
+                  {site.info.cooldown_remaining > 0 && (
+                    <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-400">
+                      쿨다운 {site.info.cooldown_remaining}s
+                    </span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <Link
+          href="/scenario"
+          className="mt-3 inline-block text-xs font-medium text-blue-400 hover:text-blue-300"
+        >
+          사이트 상세(장애 시뮬레이션 화면)로 이동 →
+        </Link>
+      </section>
+
+      {/* 실시간 네트워크 모니터링 */}
+      <section className="mb-6 rounded-lg bg-slate-800 p-5 ring-1 ring-slate-700">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-white">실시간 네트워크 모니터링</h2>
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1 rounded-md bg-slate-900 p-1 ring-1 ring-slate-700">
+              {(sites ?? []).map((site) => (
+                <button
+                  key={site.info.id}
+                  onClick={() => setChartSiteId(site.info.id)}
+                  className={`rounded px-3 py-1 text-xs font-medium transition ${
+                    activeChartSiteId === site.info.id
+                      ? "bg-blue-600 text-white"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {site.info.name.split(" - ")[0] ?? site.info.name}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-1 rounded-md bg-slate-900 p-1 ring-1 ring-slate-700">
+              {POINT_COUNT_OPTIONS.map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setPointCount(n)}
+                  className={`rounded px-2.5 py-1 text-xs font-medium transition ${
+                    pointCount === n ? "bg-slate-700 text-white" : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  최근 {n}건
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* 누적 통계 - 실제 수집 데이터 집계 */}
-      <div className="rounded-lg bg-white p-6 shadow">
-        <h2 className="mb-4 text-lg font-semibold">누적 통계</h2>
-        {!stats && <p className="text-sm text-gray-400">통계를 불러오는 중입니다.</p>}
-        {stats && stats.total_count === 0 && (
-          <p className="text-sm text-gray-400">아직 누적된 수집 데이터가 없습니다.</p>
+        {!activeSite && <p className="text-sm text-slate-400">표시할 사이트가 없습니다.</p>}
+        {activeSite && (
+          <TrafficChart
+            points={activeSite.telemetry?.points ?? []}
+            injectionTime={activeSite.lastInjectionTime}
+          />
         )}
-        {stats && stats.total_count > 0 && (
-          <>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-              <div>
-                <p className="text-xs text-gray-500">총 관측 건수</p>
-                <p className="text-xl font-bold">{stats.total_count.toLocaleString()}</p>
-              </div>
-              {Object.entries(stats.by_label).map(([name, count]) => (
-                <div key={name}>
-                  <p className="text-xs text-gray-500">{name}</p>
-                  <p className="text-xl font-bold">{count.toLocaleString()}</p>
+      </section>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* AI 장애 진단 현황 */}
+        <section className="rounded-lg bg-slate-800 p-5 ring-1 ring-slate-700">
+          <h2 className="mb-4 text-lg font-semibold text-white">AI 장애 진단 현황</h2>
+          <div className="space-y-3">
+            {(sites ?? []).map((site) => {
+              const latest = latestOf(site);
+              const faulted = site.info.scenario !== "A";
+              const confidence = latest?.predicted.probabilities
+                ? latest.predicted.probabilities[String(latest.predicted.label)]
+                : null;
+              return (
+                <div
+                  key={site.info.id}
+                  className={`rounded-md bg-slate-900 p-3 ${faulted ? "ring-1 ring-red-500/40" : "ring-1 ring-slate-800"}`}
+                >
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-slate-200">{site.info.name}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${SCENARIO_BADGE[site.info.scenario]}`}>
+                      실제: {SCENARIO_NAME_KO[site.info.scenario]}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    AI 순간 판단: {latest ? latest.predicted.name_ko : "-"}
+                    {confidence !== null && confidence !== undefined && ` · 신뢰도 ${(confidence * 100).toFixed(0)}%`}
+                  </p>
+                  {latest && (
+                    <p className="mt-1 text-xs text-slate-500">
+                      RTT {latest.rtt.toFixed(1)}ms · Loss {latest.loss_flag} · Jitter {latest.jitter.toFixed(1)}ms
+                    </p>
+                  )}
                 </div>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-[11px] text-slate-500">
+            &quot;실제&quot;는 주입된 시나리오(ground truth), &quot;AI 순간 판단&quot;은 분류기가 방금 샘플 1건을 본
+            결과입니다. 유실·복합 장애는 개별 요청 대부분이 정상처럼 보여 둘이 다를 수 있습니다.
+          </p>
+        </section>
+
+        {/* 최근 이벤트 */}
+        <section className="rounded-lg bg-slate-800 p-5 ring-1 ring-slate-700">
+          <h2 className="mb-4 text-lg font-semibold text-white">최근 이벤트</h2>
+          {events.length === 0 ? (
+            <p className="text-sm text-slate-400">최근 수신한 데이터 안에서는 장애 발생/복구 이벤트가 없습니다.</p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {events.map((ev, i) => (
+                <li key={`${ev.timestamp}-${i}`} className="flex items-center gap-2 border-b border-slate-800 pb-2 last:border-0">
+                  <span className="w-20 flex-shrink-0 text-xs text-slate-500">{formatClock(ev.timestamp)}</span>
+                  {ev.transition === "fault_started" ? (
+                    <span className="text-red-400">🚨 장애 발생</span>
+                  ) : (
+                    <span className="text-emerald-400">✅ 정상 복구</span>
+                  )}
+                  <span className="text-slate-400">— {ev.siteName}</span>
+                </li>
               ))}
-              <div>
-                <p className="text-xs text-gray-500">평균 RTT</p>
-                <p className="text-xl font-bold">{stats.avg_rtt}ms</p>
-              </div>
-            </div>
-            <p className="mt-3 text-xs text-gray-400">
-              수집 기간: {stats.first_timestamp} ~ {stats.last_timestamp}
-            </p>
-          </>
-        )}
+            </ul>
+          )}
+        </section>
       </div>
     </main>
   );

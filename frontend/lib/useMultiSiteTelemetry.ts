@@ -38,13 +38,18 @@ type CooldownBase = { value: number; at: number };
  *   보여주기 위해 "마지막으로 받은 값 + 그때 시각"만 기준점으로 저장해두고, 1초 타이머가 돌 때마다
  *   "기준점 - 지난 시간"으로 다시 계산한다.
  */
-export function useMultiSiteTelemetry() {
+export function useMultiSiteTelemetry(pointCount: number = 50) {
   const [sites, setSites] = useState<SiteState[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<{ siteId: SiteId; scenario: ScenarioCode } | null>(null);
 
   const sitesRef = useRef<SiteState[] | null>(null);
-  sitesRef.current = sites;
+  // 렌더링 중에 ref를 쓰면 안 되므로(React 19/eslint-plugin-react-hooks 규칙), 렌더 이후
+  // effect에서 최신값을 반영한다. injectScenario()는 이벤트 핸들러에서만 이 값을 읽으므로,
+  // 그 시점엔 이미 effect가 반영을 끝낸 뒤라 동작에는 차이가 없다.
+  useEffect(() => {
+    sitesRef.current = sites;
+  }, [sites]);
 
   // actionSeqRef는 "수동 조작(주입/조치)"이 일어날 때만 올라간다. 폴링끼리는 서로를 무효화하지
   // 않는다 - 예전에는 폴링을 시작할 때마다 같은 값을 올렸는데, 백엔드가 느려서 폴링 하나가
@@ -55,22 +60,26 @@ export function useMultiSiteTelemetry() {
   const lastInjectionRef = useRef<Partial<Record<SiteId, string | null>>>({});
   const cooldownBaseRef = useRef<Partial<Record<SiteId, CooldownBase>>>({});
 
-  // 1초마다 리렌더를 강제해서 쿨다운 숫자가 매끄럽게 줄어들도록 한다.
-  const [, forceTick] = useState(0);
+  // 쿨다운을 1초 단위로 매끄럽게 줄어들게 보여주기 위한 상태. ref(cooldownBaseRef)는 타이머
+  // 콜백(effect) 안에서만 읽고, 그 결과를 state로 반영해서 렌더링은 항상 state만 읽게 한다
+  // (렌더링 중 ref.current를 직접 읽지 않도록).
+  const [liveCooldowns, setLiveCooldowns] = useState<Partial<Record<SiteId, number>>>({});
   useEffect(() => {
-    const id = setInterval(() => forceTick((t) => t + 1), TICK_INTERVAL_MS);
+    const id = setInterval(() => {
+      const next: Partial<Record<SiteId, number>> = {};
+      for (const [siteId, base] of Object.entries(cooldownBaseRef.current) as [SiteId, CooldownBase | undefined][]) {
+        if (!base) continue;
+        const elapsedSec = Math.floor((Date.now() - base.at) / 1000);
+        next[siteId] = Math.max(0, base.value - elapsedSec);
+      }
+      setLiveCooldowns(next);
+    }, TICK_INTERVAL_MS);
     return () => clearInterval(id);
   }, []);
 
   const rememberCooldown = useCallback((siteId: SiteId, value: number) => {
     cooldownBaseRef.current[siteId] = { value, at: Date.now() };
-  }, []);
-
-  const liveCooldown = useCallback((siteId: SiteId, fallback: number) => {
-    const base = cooldownBaseRef.current[siteId];
-    if (!base) return fallback;
-    const elapsedSec = Math.floor((Date.now() - base.at) / 1000);
-    return Math.max(0, base.value - elapsedSec);
+    setLiveCooldowns((prev) => ({ ...prev, [siteId]: value }));
   }, []);
 
   function applySiteUpdate(siteId: SiteId, patch: Partial<SiteInfo>) {
@@ -87,7 +96,7 @@ export function useMultiSiteTelemetry() {
       const seqAtStart = actionSeqRef.current;
       try {
         const { sites: list } = await fetchSites();
-        const telemetries = await Promise.all(list.map((s) => fetchSiteTelemetry(s.id, 50)));
+        const telemetries = await Promise.all(list.map((s) => fetchSiteTelemetry(s.id, pointCount)));
         // 이 폴링이 진행되는 동안 수동 조작(주입/조치)이 일어났다면 그 결과를 덮어쓰지 않는다.
         if (cancelled || actionSeqRef.current !== seqAtStart) return;
         list.forEach((info) => rememberCooldown(info.id, info.cooldown_remaining));
@@ -112,7 +121,7 @@ export function useMultiSiteTelemetry() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [rememberCooldown]);
+  }, [rememberCooldown, pointCount]);
 
   async function injectScenario(siteId: SiteId, scenario: ScenarioCode) {
     setPending({ siteId, scenario });
@@ -150,7 +159,7 @@ export function useMultiSiteTelemetry() {
   const liveSites =
     sites?.map((s) => ({
       ...s,
-      info: { ...s.info, cooldown_remaining: liveCooldown(s.info.id, s.info.cooldown_remaining) },
+      info: { ...s.info, cooldown_remaining: liveCooldowns[s.info.id] ?? s.info.cooldown_remaining },
     })) ?? null;
 
   return { sites: liveSites, error, pending, injectScenario, resolveFault };
