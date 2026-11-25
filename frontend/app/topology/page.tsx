@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
-import { SCENARIO_NAME_KO, SCENARIO_BADGE, SCENARIO_DOT } from "@/lib/scenarioStyles";
+import { SCENARIO_NAME_KO, SCENARIO_BADGE, SCENARIO_DOT, SCENARIO_BORDER, SCENARIO_TEXT } from "@/lib/scenarioStyles";
 import type { SiteId } from "@/lib/api";
 
 type NodeKind = "sensor" | "switch" | "server";
@@ -31,7 +31,9 @@ export default function TopologyPage() {
         ⚠️ <span className="font-semibold">개념도입니다.</span> 백엔드가 실제 장비(PLC/스위치) 간
         물리적 연결 구조를 제공하지 않아, Modbus TCP 통신 경로를 일반적인 3단 구조(PLC/센서 →
         스위치 → 서버)로 단순화해 표시합니다. 포트 번호와 상태(정상/장애)만 실제 데이터이고,
-        나머지 장비 배치는 실제 현장 배선과 다를 수 있습니다.
+        나머지 장비 배치는 실제 현장 배선과 다를 수 있습니다. 백엔드가 구간(링크)별 상태를 따로
+        제공하지 않아, 한 사이트 안의 모든 연결선은 그 사이트의 현재 시나리오 색으로 동일하게
+        표시됩니다(구간별로 서로 다른 상태를 지어내지 않습니다).
       </div>
 
       {error && (
@@ -73,11 +75,7 @@ export default function TopologyPage() {
                     <button
                       onClick={() => setSelectedNode(kind)}
                       className={`flex w-40 flex-col items-center gap-2 rounded-lg border-2 bg-slate-900 p-4 transition hover:bg-slate-900/60 ${
-                        selectedNode === kind
-                          ? "border-blue-500"
-                          : faulted
-                          ? "border-red-500/60"
-                          : "border-slate-700"
+                        selectedNode === kind ? "border-blue-500" : SCENARIO_BORDER[activeSite.info.scenario]
                       }`}
                     >
                       <span className="text-3xl">{NODE_META[kind].icon}</span>
@@ -87,7 +85,7 @@ export default function TopologyPage() {
                       </span>
                     </button>
                     {i < 2 && (
-                      <span className={`text-2xl ${faulted ? "text-red-500" : "text-slate-600"}`}>
+                      <span className={`text-2xl ${faulted ? SCENARIO_TEXT[activeSite.info.scenario] : "text-slate-600"}`}>
                         {faulted ? "⚡" : "—"}
                       </span>
                     )}
@@ -129,7 +127,7 @@ export default function TopologyPage() {
                     상태는 소속 사이트 전체 상태와 동일하게 표시됩니다.
                   </p>
                 )}
-                <p className={`font-medium ${activeSite.info.scenario !== "A" ? "text-red-400" : "text-emerald-400"}`}>
+                <p className={`font-medium ${SCENARIO_TEXT[activeSite.info.scenario]}`}>
                   상태: {SCENARIO_NAME_KO[activeSite.info.scenario]}
                 </p>
               </div>

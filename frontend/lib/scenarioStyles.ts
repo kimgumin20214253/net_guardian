@@ -23,6 +23,11 @@ export const SCENARIO_RING: Record<ScenarioCode, string> = {
   C: "ring-2 ring-red-500/60", D: "ring-2 ring-purple-500/60",
 };
 
+// SCENARIO_RING과 같은 색 체계이지만 border-* 유틸리티가 필요한 곳(토폴로지 노드 테두리 등)에서 쓴다.
+export const SCENARIO_BORDER: Record<ScenarioCode, string> = {
+  A: "border-slate-700", B: "border-amber-500/60", C: "border-red-500/60", D: "border-purple-500/60",
+};
+
 export const SCENARIO_TEXT: Record<ScenarioCode, string> = {
   A: "text-emerald-400", B: "text-amber-400", C: "text-red-400", D: "text-purple-400",
 };
