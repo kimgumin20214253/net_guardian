@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
 import { type SiteState } from "@/lib/useMultiSiteTelemetry";
 import { withTransitions, type PointWithTransition } from "@/lib/transitions";
-import { SCENARIO_NAME_KO, SCENARIO_BADGE, SCENARIO_DOT, SCENARIO_RING } from "@/lib/scenarioStyles";
+import { SCENARIO_NAME_KO, SCENARIO_BADGE, SCENARIO_DOT, SCENARIO_RING, LABEL_TO_SCENARIO } from "@/lib/scenarioStyles";
 import TrafficChart from "@/components/TrafficChart";
+import FaultTrendChart from "@/components/FaultTrendChart";
 import type { SiteId } from "@/lib/api";
 
 const POINT_COUNT_OPTIONS = [50, 100, 200];
@@ -31,14 +32,39 @@ export default function HomePage() {
   const totalSites = sites?.length ?? 0;
   const faultedSites = useMemo(() => (sites ?? []).filter((s) => s.info.scenario !== "A"), [sites]);
   const normalCount = totalSites - faultedSites.length;
+  // 경고(지연)와 위험(유실/복합)을 나눠서 본다 - 둘 다 이미 아는 site.info.scenario로만 판단하므로
+  // 새 데이터가 필요하지 않다.
+  const warningSites = useMemo(() => (sites ?? []).filter((s) => s.info.scenario === "B"), [sites]);
+  const dangerSites = useMemo(
+    () => (sites ?? []).filter((s) => s.info.scenario === "C" || s.info.scenario === "D"),
+    [sites]
+  );
 
-  // 평균 RTT와 손실 현황은 "실제로 값이 있는 사이트"만으로 계산한다 - 데이터가 아예 없는 사이트를
-  // 0으로 쳐서 평균을 왜곡시키지 않기 위함.
+  // 평균 RTT/Jitter와 손실 현황은 "실제로 값이 있는 사이트"만으로 계산한다 - 데이터가 아예 없는
+  // 사이트를 0으로 쳐서 평균을 왜곡시키지 않기 위함.
   const rttValues = (sites ?? [])
     .map((s) => latestOf(s)?.rtt)
     .filter((v): v is number => typeof v === "number");
   const avgRtt = rttValues.length ? rttValues.reduce((a, b) => a + b, 0) / rttValues.length : null;
+  const jitterValues = (sites ?? [])
+    .map((s) => latestOf(s)?.jitter)
+    .filter((v): v is number => typeof v === "number");
+  const avgJitter = jitterValues.length ? jitterValues.reduce((a, b) => a + b, 0) / jitterValues.length : null;
   const lossSiteCount = (sites ?? []).filter((s) => latestOf(s)?.loss_flag === 1).length;
+  // 패킷 손실률(%) - 사이트별로 최근 수신 구간 중 loss_flag=1 비율을 구해 평균한다(스냅샷 1건이
+  // 아니라 구간 전체를 보므로 "손실 감지 사이트" 카드와는 다른, 보조적인 지표).
+  const lossRatePct = useMemo(() => {
+    if (!sites) return null;
+    const rates = (sites ?? [])
+      .map((s) => {
+        const pts = s.telemetry?.points ?? [];
+        if (pts.length === 0) return null;
+        return pts.filter((p) => p.loss_flag === 1).length / pts.length;
+      })
+      .filter((v): v is number => v !== null);
+    if (rates.length === 0) return null;
+    return (rates.reduce((a, b) => a + b, 0) / rates.length) * 100;
+  }, [sites]);
 
   const dataSource = sites?.find((s) => s.telemetry)?.telemetry?.source ?? null;
   const lastUpdated = (sites ?? [])
@@ -55,11 +81,11 @@ export default function HomePage() {
   // 뽑으므로, 이 창에 잡힌 전환이 없으면 그냥 "최근 이벤트 없음"으로 둔다.
   const events = useMemo(() => {
     if (!sites) return [];
-    type EventRow = PointWithTransition & { siteName: string };
+    type EventRow = PointWithTransition & { siteId: SiteId; siteName: string };
     const rows: EventRow[] = sites.flatMap((s) =>
       withTransitions(s.telemetry?.points ?? [])
         .filter((p) => p.transition)
-        .map((p) => ({ ...p, siteName: s.info.name }))
+        .map((p) => ({ ...p, siteId: s.info.id, siteName: s.info.name }))
     );
     return rows.sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 8);
   }, [sites]);
@@ -99,13 +125,16 @@ export default function HomePage() {
       )}
 
       {/* KPI 카드 */}
-      <section className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+      <section className="mb-2 grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[
           { icon: "🏭", label: "전체 사이트", value: sites ? totalSites : "-" },
           { icon: "✅", label: "정상 사이트", value: sites ? normalCount : "-", tone: "text-emerald-400" },
-          { icon: "🚨", label: "장애 사이트", value: sites ? faultedSites.length : "-", tone: faultedSites.length > 0 ? "text-red-400" : "text-slate-100" },
+          { icon: "⚠️", label: "경고 사이트", value: sites ? warningSites.length : "-", tone: warningSites.length > 0 ? "text-amber-400" : "text-slate-100" },
+          { icon: "🚨", label: "위험 사이트", value: sites ? dangerSites.length : "-", tone: dangerSites.length > 0 ? "text-red-400" : "text-slate-100" },
           { icon: "⏱️", label: "평균 RTT", value: avgRtt !== null ? `${avgRtt.toFixed(1)}ms` : "-" },
+          { icon: "📶", label: "평균 Jitter", value: avgJitter !== null ? `${avgJitter.toFixed(1)}ms` : "-" },
           { icon: "📉", label: "손실 감지 사이트", value: sites ? `${lossSiteCount}/${totalSites}` : "-" },
+          { icon: "📊", label: "패킷 손실률", value: lossRatePct !== null ? `${lossRatePct.toFixed(1)}%` : "-" },
         ].map((kpi) => (
           <div key={kpi.label} className="rounded-lg bg-slate-800 p-4 ring-1 ring-slate-700">
             <div className="mb-1 flex items-center gap-2 text-sm text-slate-400">
@@ -116,6 +145,9 @@ export default function HomePage() {
           </div>
         ))}
       </section>
+      <p className="mb-6 text-[11px] text-slate-500">
+        ℹ️ TCP 재전송 세그먼트 수는 현재 수집하지 않아 KPI로 제공하지 않습니다.
+      </p>
 
       {/* 사이트별 네트워크 상태 */}
       <section className="mb-6 rounded-lg bg-slate-800 p-5 ring-1 ring-slate-700">
@@ -130,49 +162,68 @@ export default function HomePage() {
               ? latest.predicted.probabilities[String(latest.predicted.label)]
               : null;
             return (
-              <button
+              <div
                 key={site.info.id}
-                onClick={() => setChartSiteId(site.info.id)}
-                className={`flex flex-col gap-2 rounded-lg bg-slate-900 p-4 text-left transition hover:bg-slate-900/70 ${SCENARIO_RING[site.info.scenario]} ${
+                className={`flex flex-col gap-2 rounded-lg bg-slate-900 p-4 transition ${SCENARIO_RING[site.info.scenario]} ${
                   activeChartSiteId === site.info.id ? "outline outline-2 outline-blue-500" : ""
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-100">{site.info.name}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${SCENARIO_BADGE[site.info.scenario]}`}>
-                    <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${SCENARIO_DOT[site.info.scenario]}`} />
-                    {SCENARIO_NAME_KO[site.info.scenario]}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500">포트 {site.info.port}</p>
-
-                <div className="mt-1 grid grid-cols-3 gap-2 text-center">
-                  <div>
-                    <p className="text-[11px] text-slate-500">RTT</p>
-                    <p className="text-sm font-semibold text-slate-100">{latest ? `${latest.rtt.toFixed(1)}ms` : "-"}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-slate-500">Loss</p>
-                    <p className="text-sm font-semibold text-slate-100">{latest ? latest.loss_flag : "-"}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-slate-500">Jitter</p>
-                    <p className="text-sm font-semibold text-slate-100">{latest ? `${latest.jitter.toFixed(1)}ms` : "-"}</p>
-                  </div>
-                </div>
-
-                <div className="mt-1 flex items-center justify-between border-t border-slate-800 pt-2 text-xs">
-                  <span className="text-slate-400">
-                    AI 진단: <span className="font-medium text-slate-200">{latest ? latest.predicted.name_ko : "-"}</span>
-                    {confidence !== null && confidence !== undefined && ` (${(confidence * 100).toFixed(0)}%)`}
-                  </span>
-                  {site.info.cooldown_remaining > 0 && (
-                    <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-400">
-                      쿨다운 {site.info.cooldown_remaining}s
+                <button
+                  type="button"
+                  onClick={() => setChartSiteId(site.info.id)}
+                  className="flex flex-col gap-2 text-left hover:opacity-90"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-100">{site.info.name}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${SCENARIO_BADGE[site.info.scenario]}`}>
+                      <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${SCENARIO_DOT[site.info.scenario]}`} />
+                      {SCENARIO_NAME_KO[site.info.scenario]}
                     </span>
-                  )}
+                  </div>
+                  <p className="text-xs text-slate-500">포트 {site.info.port}</p>
+
+                  <div className="mt-1 grid grid-cols-3 gap-2 text-center">
+                    <div>
+                      <p className="text-[11px] text-slate-500">RTT</p>
+                      <p className="text-sm font-semibold text-slate-100">{latest ? `${latest.rtt.toFixed(1)}ms` : "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-slate-500">Loss</p>
+                      <p className="text-sm font-semibold text-slate-100">{latest ? latest.loss_flag : "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-slate-500">Jitter</p>
+                      <p className="text-sm font-semibold text-slate-100">{latest ? `${latest.jitter.toFixed(1)}ms` : "-"}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-1 flex items-center justify-between border-t border-slate-800 pt-2 text-xs">
+                    <span className="text-slate-400">
+                      AI 진단: <span className="font-medium text-slate-200">{latest ? latest.predicted.name_ko : "-"}</span>
+                      {confidence !== null && confidence !== undefined && ` (${(confidence * 100).toFixed(0)}%)`}
+                    </span>
+                    {site.info.cooldown_remaining > 0 && (
+                      <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-400">
+                        쿨다운 {site.info.cooldown_remaining}s
+                      </span>
+                    )}
+                  </div>
+                </button>
+
+                <div className="flex items-center justify-between border-t border-slate-800 pt-2 text-[11px]">
+                  <span className="text-slate-500">
+                    마지막 수신 {latest ? formatClock(latest.timestamp) : "-"}
+                  </span>
+                  <div className="flex gap-2">
+                    <Link href={`/monitoring?site=${site.info.id}`} className="font-medium text-blue-400 hover:text-blue-300">
+                      모니터링 →
+                    </Link>
+                    <Link href={`/diagnosis?site=${site.info.id}`} className="font-medium text-blue-400 hover:text-blue-300">
+                      AI진단 →
+                    </Link>
+                  </div>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -182,6 +233,16 @@ export default function HomePage() {
         >
           사이트 상세(장애 시뮬레이션 화면)로 이동 →
         </Link>
+      </section>
+
+      {/* 네트워크 장애 추이 */}
+      <section className="mb-6 rounded-lg bg-slate-800 p-5 ring-1 ring-slate-700">
+        <h2 className="mb-1 text-lg font-semibold text-white">네트워크 장애 추이</h2>
+        <p className="mb-4 text-xs text-slate-500">
+          최근 수집 데이터 기준 분 단위 장애 발생/정상 복구 횟수입니다 (전체 운영 이력이 아니라
+          현재 폴링 창에 들어온 데이터만 집계합니다).
+        </p>
+        <FaultTrendChart sites={sites} />
       </section>
 
       {/* 실시간 네트워크 모니터링 */}
@@ -272,22 +333,38 @@ export default function HomePage() {
 
         {/* 최근 이벤트 */}
         <section className="rounded-lg bg-slate-800 p-5 ring-1 ring-slate-700">
-          <h2 className="mb-4 text-lg font-semibold text-white">최근 이벤트</h2>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white">최근 이벤트</h2>
+            <Link href="/logs" className="text-xs font-medium text-blue-400 hover:text-blue-300">
+              전체 이벤트 이력 →
+            </Link>
+          </div>
           {events.length === 0 ? (
             <p className="text-sm text-slate-400">최근 수신한 데이터 안에서는 장애 발생/복구 이벤트가 없습니다.</p>
           ) : (
             <ul className="space-y-2 text-sm">
-              {events.map((ev, i) => (
-                <li key={`${ev.timestamp}-${i}`} className="flex items-center gap-2 border-b border-slate-800 pb-2 last:border-0">
-                  <span className="w-20 flex-shrink-0 text-xs text-slate-500">{formatClock(ev.timestamp)}</span>
-                  {ev.transition === "fault_started" ? (
-                    <span className="text-red-400">🚨 장애 발생</span>
-                  ) : (
-                    <span className="text-emerald-400">✅ 정상 복구</span>
-                  )}
-                  <span className="text-slate-400">— {ev.siteName}</span>
-                </li>
-              ))}
+              {events.map((ev, i) => {
+                const scenario = ev.true_label !== null ? LABEL_TO_SCENARIO[ev.true_label] : null;
+                return (
+                  <li key={`${ev.timestamp}-${i}`} className="flex items-center gap-2 border-b border-slate-800 pb-2 last:border-0">
+                    <span className="w-20 flex-shrink-0 text-xs text-slate-500">{formatClock(ev.timestamp)}</span>
+                    {ev.transition === "fault_started" ? (
+                      <span className="text-red-400">🚨 장애 발생</span>
+                    ) : (
+                      <span className="text-emerald-400">✅ 정상 복구</span>
+                    )}
+                    <span className="text-slate-400">— {ev.siteName}</span>
+                    {scenario && (
+                      <span className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-medium ${SCENARIO_BADGE[scenario]}`}>
+                        {SCENARIO_NAME_KO[scenario]}
+                      </span>
+                    )}
+                    <Link href={`/logs?site=${ev.siteId}`} className="flex-shrink-0 text-[11px] font-medium text-blue-400 hover:text-blue-300">
+                      상세 →
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

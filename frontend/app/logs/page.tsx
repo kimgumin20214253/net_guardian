@@ -1,10 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
 import { SEVERITY_TEXT_COLOR } from "@/lib/severityStyles";
 import { withTransitions, type PointWithTransition } from "@/lib/transitions";
 import type { SiteId } from "@/lib/api";
+
+const VALID_SITE_IDS: SiteId[] = ["site-1", "site-2", "site-3"];
 
 const LEVEL_BY_SEVERITY: Record<string, string> = {
   ok: "INFO",
@@ -46,7 +49,16 @@ function toCsv(rows: LogRow[]) {
   return [header, ...lines].join("\n");
 }
 
+// useSearchParams()(?site= 읽기)는 Suspense 경계 안에서만 프리렌더링 가능하므로 내부 컴포넌트로 분리.
 export default function LogsPage() {
+  return (
+    <Suspense fallback={<main className="p-8 text-sm text-slate-400">불러오는 중입니다.</main>}>
+      <LogsPageInner />
+    </Suspense>
+  );
+}
+
+function LogsPageInner() {
   const { sites, error } = useSharedMultiSiteTelemetry();
 
   const allRows: LogRow[] = useMemo(() => {
@@ -62,8 +74,12 @@ export default function LogsPage() {
       .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   }, [sites]);
 
+  // 종합 관제 화면의 "상세 →" 링크가 /logs?site=site-2로 넘어오면 그 사이트로 미리 필터링한다.
+  const siteParam = useSearchParams().get("site");
+  const linkedSiteId = VALID_SITE_IDS.includes(siteParam as SiteId) ? (siteParam as SiteId) : "all";
+
   const [severityFilter, setSeverityFilter] = useState("all");
-  const [siteFilter, setSiteFilter] = useState<SiteId | "all">("all");
+  const [siteFilter, setSiteFilter] = useState<SiteId | "all">(linkedSiteId);
   const [keyword, setKeyword] = useState("");
 
   const filteredRows = useMemo(() => {

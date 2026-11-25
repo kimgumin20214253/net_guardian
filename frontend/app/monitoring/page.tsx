@@ -1,20 +1,35 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
 import { SCENARIO_NAME_KO, SCENARIO_BADGE, SCENARIO_DOT } from "@/lib/scenarioStyles";
 import TrafficChart from "@/components/TrafficChart";
 import type { SiteId } from "@/lib/api";
 
 const POINT_COUNT_OPTIONS = [50, 100, 200];
+const VALID_SITE_IDS: SiteId[] = ["site-1", "site-2", "site-3"];
 
+// useSearchParams()(?site= 읽기)는 Suspense 경계 안에서만 프리렌더링 가능하므로 내부 컴포넌트로 분리.
 export default function MonitoringPage() {
+  return (
+    <Suspense fallback={<main className="p-8 text-sm text-slate-400">불러오는 중입니다.</main>}>
+      <MonitoringPageInner />
+    </Suspense>
+  );
+}
+
+function MonitoringPageInner() {
   // 레이아웃이 이미 받아온 데이터를 공유한다 - "최근 N건"은 그 안에서 화면에 보여줄 범위만 자른다.
   const { sites, error } = useSharedMultiSiteTelemetry();
   const [pointCount, setPointCount] = useState(50);
   const [activeSiteId, setActiveSiteId] = useState<SiteId | null>(null);
+  // 종합 관제 화면의 "모니터링 →" 버튼이 /monitoring?site=site-2 식으로 넘어오면, 사용자가
+  // 아직 직접 탭을 누르지 않았을 때만(activeSiteId가 null일 때만) 그 사이트를 기본 선택한다.
+  const siteParam = useSearchParams().get("site");
+  const linkedSiteId = VALID_SITE_IDS.includes(siteParam as SiteId) ? (siteParam as SiteId) : null;
 
-  const resolvedSiteId = activeSiteId ?? sites?.[0]?.info.id ?? null;
+  const resolvedSiteId = activeSiteId ?? linkedSiteId ?? sites?.[0]?.info.id ?? null;
   const activeSite = (sites ?? []).find((s) => s.info.id === resolvedSiteId) ?? null;
   const points = (activeSite?.telemetry?.points ?? []).slice(-pointCount);
   const latest = points[points.length - 1];
