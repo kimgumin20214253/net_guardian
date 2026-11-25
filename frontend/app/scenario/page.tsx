@@ -40,23 +40,13 @@ export default function ScenarioPage() {
     setPendingInjectScenario(null);
   }
 
-  // "장애냐 아니냐"는 AI의 순간 예측(latest.predicted)이 아니라 실제로 주입된 시나리오로 판단한다.
-  // 유실/복합 장애는 대부분의 개별 요청이 정상처럼 보이고 일부만 이상하게 나오는 방식이라,
-  // AI의 "방금 한 건" 예측만 보면 장애 중에도 계속 정상↔이상으로 깜빡인다. 그 깜빡임을 기준으로
-  // 체크리스트를 켜고 끄면, 체크리스트가 수시로 사라졌다 다시 나타나며 체크 상태가 초기화된다.
-  const faultedSites = (sites ?? []).filter((s) => s.info.scenario !== "A");
-
   return (
     <main className="p-8">
       <h1 className="mb-2 text-3xl font-bold">장애 시나리오 제어</h1>
-      <p className="mb-1 text-sm text-gray-500">
-        버튼을 누르면 어느 산업 네트워크에 장애를 주입할지 선택할 수 있습니다. 선택한 네트워크에만
-        실제로 장애가 재현되고, 아래 그래프에서 해당 네트워크만 실시간으로 반응합니다.
-      </p>
-      <p className="mb-6 text-xs text-gray-400">
-        5분마다 정상인 네트워크 중 하나에 자동으로 장애가 무작위 주입됩니다. 초동 조치 체크리스트를
-        전부 완료하면 정상으로 복귀하고, 그 네트워크는 1분간 어떤 방식으로도 장애가 걸리지 않습니다
-        (직접 주입도 동일하게 적용).
+      <p className="mb-6 text-sm text-gray-500">
+        버튼으로 공장을 골라 장애를 직접 주입하거나, 5분마다 자동으로 무작위 주입되는 것을
+        기다려보세요. 장애가 난 공장은 그래프 아래에 바로 대응 체크리스트가 나타나고, 전부
+        완료하면 자동으로 정상 복귀 후 1분간 재발을 막습니다.
       </p>
 
       {error && (
@@ -65,7 +55,7 @@ export default function ScenarioPage() {
         </div>
       )}
 
-      {/* 상단: 시나리오 주입 버튼 */}
+      {/* ① 시나리오 주입 */}
       <div className="rounded-lg bg-white p-6 shadow">
         <h2 className="mb-4 text-xl font-semibold">① 시나리오 주입</h2>
         <div className="flex flex-wrap gap-3">
@@ -82,7 +72,8 @@ export default function ScenarioPage() {
         </div>
         {pending && (
           <p className="mt-3 text-sm text-gray-500">
-            {pending.siteId}에 {pending.scenario} 시나리오 주입 중...
+            {sites?.find((s) => s.info.id === pending.siteId)?.info.name ?? pending.siteId}에{" "}
+            {SCENARIO_LABEL[pending.scenario]} 주입 중...
           </p>
         )}
       </div>
@@ -97,9 +88,10 @@ export default function ScenarioPage() {
         />
       )}
 
-      {/* 중단: 사이트별 3x3 그래프 */}
+      {/* ② 공장별 상태 - 그래프와 대응 체크리스트를 공장 하나당 카드 하나에 같이 둬서,
+          어느 그래프가 어느 체크리스트 건지 눈으로 다시 찾아 맞출 필요가 없게 한다. */}
       <div className="mt-6 rounded-lg bg-white p-6 shadow">
-        <h2 className="mb-4 text-xl font-semibold">② 네트워크별 실시간 관찰</h2>
+        <h2 className="mb-4 text-xl font-semibold">② 공장별 상태</h2>
 
         {!sites && <p className="text-sm text-gray-400">사이트 목록을 불러오는 중입니다.</p>}
 
@@ -107,8 +99,9 @@ export default function ScenarioPage() {
           {(sites ?? []).map((site) => {
             const points = site.telemetry?.points ?? [];
             const latest = points[points.length - 1];
-            // 빨간 테두리는 "실제로 주입된 장애" 기준 - AI의 순간 예측(latest.predicted)은
-            // 유실/복합 장애에서 정상↔이상으로 계속 깜빡이므로 테두리가 그걸 따라가면 안 된다.
+            // "장애냐 아니냐"는 AI의 순간 예측이 아니라 실제로 주입된 시나리오로 판단한다 - 유실/복합
+            // 장애는 대부분의 개별 요청이 정상처럼 보여서, 순간 예측 기준이면 테두리와 체크리스트가
+            // 장애 중에도 계속 깜빡이며 사라졌다 나타난다.
             const faulted = site.info.scenario !== "A";
 
             return (
@@ -120,45 +113,18 @@ export default function ScenarioPage() {
               >
                 <div className="mb-3 flex items-center gap-3">
                   <span className="font-semibold text-slate-800">{site.info.name}</span>
-                  <span className="text-xs text-gray-400">
-                    포트 {site.info.port} · 주입된 시나리오 {site.info.scenario}
-                  </span>
                   {site.info.cooldown_remaining > 0 && (
                     <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-600">
                       쿨다운 {site.info.cooldown_remaining}초
                     </span>
                   )}
                   {latest && (
-                    <span className={`ml-auto text-sm font-semibold ${SCENARIO_SEVERITY_COLOR[site.info.scenario]}`}>
+                    <span className={`text-sm font-semibold ${SCENARIO_SEVERITY_COLOR[site.info.scenario]}`}>
                       {SCENARIO_LABEL[site.info.scenario]}
                       {faulted && " 🚨"}
                     </span>
                   )}
-                </div>
-                <TrafficChart points={points} injectionTime={site.lastInjectionTime} />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 하단: 초동 조치 대응 가이드 - 평소엔 빈칸, 장애 발생 시에만 출력 */}
-      <div className="mt-6 rounded-lg bg-white p-6 shadow">
-        <h2 className="mb-4 text-xl font-semibold">③ 초동 조치 대응 가이드</h2>
-
-        {faultedSites.length === 0 ? (
-          <p className="text-sm text-gray-400">현재 장애가 감지된 네트워크가 없습니다.</p>
-        ) : (
-          <div className="space-y-6">
-            {faultedSites.map((site) => {
-              const points = site.telemetry?.points ?? [];
-              const latest = points[points.length - 1];
-              return (
-                <div key={site.info.id}>
-                  <div className="mb-1 flex items-center justify-between">
-                    <p className="text-sm font-semibold text-red-600">
-                      🚨 {site.info.name} — {SCENARIO_LABEL[site.info.scenario]}
-                    </p>
+                  {faulted && (
                     <button
                       onClick={() =>
                         askCopilot(
@@ -178,26 +144,22 @@ export default function ScenarioPage() {
                           }
                         )
                       }
-                      className="flex-shrink-0 rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-100"
+                      className="ml-auto flex-shrink-0 rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-100"
                     >
-                      🛠️ 이 공장에 대해 AI 코파일럿에게 물어보기
+                      🛠️ AI 코파일럿에게 물어보기
                     </button>
-                  </div>
-                  <p className="mb-2 text-xs text-gray-400">
-                    체크리스트를 전부 완료하면 자동으로 정상 상태로 복귀하고, 1분간 이 네트워크에는
-                    새 장애가 걸리지 않습니다.
-                  </p>
-                  {/* 실제로 주입된 시나리오 기준 가이드 - AI의 순간 예측이 아니라 이걸 써야
-                      장애가 안 풀린 동안 가이드가 안정적으로 유지된다. */}
-                  <ActionChecklist
-                    siteId={site.info.id}
-                    onComplete={() => resolveFault(site.info.id)}
-                  />
+                  )}
                 </div>
-              );
-            })}
-          </div>
-        )}
+
+                <TrafficChart points={points} injectionTime={site.lastInjectionTime} />
+
+                {faulted && (
+                  <ActionChecklist siteId={site.info.id} onComplete={() => resolveFault(site.info.id)} />
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </main>
   );
