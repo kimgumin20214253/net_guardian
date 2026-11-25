@@ -51,15 +51,15 @@ export default function TrafficChart({
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       {/* RTT */}
       <div className="rounded-lg bg-white p-4 shadow">
-        <h2 className="mb-4 font-bold">RTT 실시간 그래프</h2>
+        <h2 className="mb-4 text-lg font-bold">RTT 실시간 그래프</h2>
 
-        <ResponsiveContainer width="100%" height={250}>
+        <ResponsiveContainer width="100%" height={270}>
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="time" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
+            <XAxis dataKey="time" tick={{ fontSize: 13 }} />
+            <YAxis tick={{ fontSize: 13 }} />
+            <Tooltip contentStyle={{ fontSize: 13 }} />
+            <Legend wrapperStyle={{ fontSize: 13 }} />
             <Line
               type="monotone"
               dataKey="rtt"
@@ -77,15 +77,15 @@ export default function TrafficChart({
 
       {/* Packet Loss */}
       <div className="rounded-lg bg-white p-4 shadow">
-        <h2 className="mb-4 font-bold">Packet Loss 그래프</h2>
+        <h2 className="mb-4 text-lg font-bold">Packet Loss 그래프</h2>
 
-        <ResponsiveContainer width="100%" height={250}>
+        <ResponsiveContainer width="100%" height={270}>
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="time" />
-            <YAxis domain={[0, 1]} ticks={[0, 1]} />
-            <Tooltip />
-            <Legend />
+            <XAxis dataKey="time" tick={{ fontSize: 13 }} />
+            <YAxis domain={[0, 1]} ticks={[0, 1]} tick={{ fontSize: 13 }} />
+            <Tooltip contentStyle={{ fontSize: 13 }} />
+            <Legend wrapperStyle={{ fontSize: 13 }} />
             <Line
               type="stepAfter"
               dataKey="loss_flag"
@@ -103,15 +103,15 @@ export default function TrafficChart({
 
       {/* Jitter */}
       <div className="rounded-lg bg-white p-4 shadow">
-        <h2 className="mb-4 font-bold">Jitter 그래프</h2>
+        <h2 className="mb-4 text-lg font-bold">Jitter 그래프</h2>
 
-        <ResponsiveContainer width="100%" height={250}>
+        <ResponsiveContainer width="100%" height={270}>
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="time" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
+            <XAxis dataKey="time" tick={{ fontSize: 13 }} />
+            <YAxis tick={{ fontSize: 13 }} />
+            <Tooltip contentStyle={{ fontSize: 13 }} />
+            <Legend wrapperStyle={{ fontSize: 13 }} />
             <Line
               type="monotone"
               dataKey="jitter"

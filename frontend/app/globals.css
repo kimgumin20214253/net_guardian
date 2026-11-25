@@ -19,6 +19,12 @@
   }
 }
 
+html {
+  /* 전체 글씨/여백을 한 번에 키운다 (Tailwind 크기는 대부분 rem 기반이라 여기서만 바꾸면
+     글씨, 아이콘, 간격이 전부 비례해서 같이 커진다). 기본 16px -> 19px. */
+  font-size: 118.75%;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

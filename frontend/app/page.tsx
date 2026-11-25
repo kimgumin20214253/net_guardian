@@ -4,9 +4,19 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useTelemetry } from "@/lib/TelemetryContext";
 import { SEVERITY_TEXT_COLOR, SEVERITY_BG_COLOR } from "@/lib/severityStyles";
-import { fetchStatsSummary, type StatsSummary } from "@/lib/api";
+import { fetchStatsSummary, type StatsSummary, type ScenarioCode, type Severity } from "@/lib/api";
 
 const RESEARCH_BADGES = ["L4 경량 지표 3종 기반", "L7 페이로드 비열람", "실측 데이터 기반 검증"];
+
+// 상단 상태 배너는 AI의 순간 예측(predicted.severity)이 아니라 실제로 주입된 시나리오(ground
+// truth) 기준으로 보여준다 - 유실/복합 장애는 개별 요청 대부분이 정상처럼 보여, 순간 예측만
+// 따라가면 "정상"과 "장애"가 계속 깜빡인다 (/scenario 페이지에서 이미 같은 문제를 고친 바 있음).
+const SCENARIO_NAME_KO: Record<ScenarioCode, string> = {
+  A: "정상", B: "지연 장애", C: "유실 장애", D: "복합 장애",
+};
+const SCENARIO_SEVERITY: Record<ScenarioCode, Severity> = {
+  A: "ok", B: "warning", C: "danger", D: "critical",
+};
 
 const FEATURE_CARDS = [
   { href: "/scenario", icon: "🎛️", title: "장애 시나리오 제어", desc: "직접 장애를 주입하고 실시간으로 대응을 연습하세요" },
@@ -49,23 +59,23 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* 현재 상태 배너 */}
-      <div className="mb-6 flex items-center gap-3 rounded-lg bg-white px-5 py-3 shadow">
+      {/* 현재 상태 배너 - 실제로 주입된 시나리오(ground truth) 기준 */}
+      <div className="mb-6 flex flex-wrap items-center gap-3 rounded-lg bg-white px-5 py-4 shadow">
         <span
-          className={`h-3 w-3 rounded-full ${latest ? SEVERITY_BG_COLOR[latest.predicted.severity].replace("-50", "-500") : "bg-slate-300"}`}
+          className={`h-4 w-4 rounded-full ${scenario ? SEVERITY_BG_COLOR[SCENARIO_SEVERITY[scenario.scenario]].replace("-50", "-500") : "bg-slate-300"}`}
         />
-        <span className={`font-semibold ${latest ? SEVERITY_TEXT_COLOR[latest.predicted.severity] : "text-slate-400"}`}>
-          {latest ? latest.predicted.name_ko : "대기 중"}
+        <span className={`text-lg font-semibold ${scenario ? SEVERITY_TEXT_COLOR[SCENARIO_SEVERITY[scenario.scenario]] : "text-slate-400"}`}>
+          {scenario ? SCENARIO_NAME_KO[scenario.scenario] : "대기 중"}
         </span>
         {latest && (
-          <span className="text-sm text-gray-500">
-            RTT {latest.rtt.toFixed(1)}ms · 신뢰도{" "}
+          <span className="text-base text-gray-500">
+            RTT {latest.rtt.toFixed(1)}ms · AI 진단 신뢰도{" "}
             {latest.predicted.probabilities
               ? `${(latest.predicted.probabilities[String(latest.predicted.label)] * 100).toFixed(0)}%`
               : "-"}
           </span>
         )}
-        <span className="ml-auto text-xs text-gray-400">
+        <span className="ml-auto text-sm text-gray-400">
           {data?.source === "live" ? "🟢 실시간 데이터" : "⚪ 데모 데이터"}
         </span>
       </div>
@@ -115,7 +125,7 @@ export default function HomePage() {
           <div className="rounded-md bg-slate-100 px-3 py-2">
             <p className="font-medium text-slate-700">④ 대응 가이드 표출</p>
             <p className="mt-1 text-xs text-slate-500">
-              {latest && latest.predicted.severity !== "ok" ? "⚠️ 가이드 활성" : "대기 중"}
+              {scenario && scenario.scenario !== "A" ? "⚠️ 가이드 활성" : "대기 중"}
             </p>
           </div>
         </div>
