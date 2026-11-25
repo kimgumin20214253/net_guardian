@@ -26,3 +26,8 @@ export const SCENARIO_RING: Record<ScenarioCode, string> = {
 export const SCENARIO_TEXT: Record<ScenarioCode, string> = {
   A: "text-emerald-400", B: "text-amber-400", C: "text-red-400", D: "text-purple-400",
 };
+
+// backend/api/main.py의 SCENARIO_LABEL_MAP(A=0,B=1,C=2,D=3)과 동일하게, TelemetryPoint.true_label
+// (정수)을 시나리오 코드로 되돌릴 때 쓴다 - 백엔드가 이미 쓰는 매핑을 그대로 가져온 것이라 새로
+// 지어낸 기준이 아니다.
+export const LABEL_TO_SCENARIO: Record<number, ScenarioCode> = { 0: "A", 1: "B", 2: "C", 3: "D" };
