@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useMultiSiteTelemetry, type SiteState } from "@/lib/useMultiSiteTelemetry";
+import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
+import { type SiteState } from "@/lib/useMultiSiteTelemetry";
 import { withTransitions, type PointWithTransition } from "@/lib/transitions";
 import { SCENARIO_NAME_KO, SCENARIO_BADGE, SCENARIO_DOT, SCENARIO_RING } from "@/lib/scenarioStyles";
 import TrafficChart from "@/components/TrafficChart";
@@ -21,8 +22,10 @@ function formatClock(timestamp: string | undefined) {
 }
 
 export default function HomePage() {
+  // 레이아웃에서 이미 최대 200건을 받아와 모든 페이지가 공유한다 - 다시 네트워크를 타지 않고
+  // "최근 N건" 선택은 그 안에서 화면에 보여줄 범위만 잘라서 쓴다(더 빠르게 즉시 반영됨).
+  const { sites, error } = useSharedMultiSiteTelemetry();
   const [pointCount, setPointCount] = useState(50);
-  const { sites, error } = useMultiSiteTelemetry(pointCount);
   const [chartSiteId, setChartSiteId] = useState<SiteId | null>(null);
 
   const totalSites = sites?.length ?? 0;
@@ -220,7 +223,7 @@ export default function HomePage() {
         {!activeSite && <p className="text-sm text-slate-400">표시할 사이트가 없습니다.</p>}
         {activeSite && (
           <TrafficChart
-            points={activeSite.telemetry?.points ?? []}
+            points={(activeSite.telemetry?.points ?? []).slice(-pointCount)}
             injectionTime={activeSite.lastInjectionTime}
           />
         )}

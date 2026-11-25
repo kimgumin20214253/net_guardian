@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMultiSiteTelemetry } from "@/lib/useMultiSiteTelemetry";
+import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
 import { SCENARIO_NAME_KO, SCENARIO_BADGE, SCENARIO_DOT } from "@/lib/scenarioStyles";
 import TrafficChart from "@/components/TrafficChart";
 import type { SiteId } from "@/lib/api";
@@ -9,13 +9,14 @@ import type { SiteId } from "@/lib/api";
 const POINT_COUNT_OPTIONS = [50, 100, 200];
 
 export default function MonitoringPage() {
+  // 레이아웃이 이미 받아온 데이터를 공유한다 - "최근 N건"은 그 안에서 화면에 보여줄 범위만 자른다.
+  const { sites, error } = useSharedMultiSiteTelemetry();
   const [pointCount, setPointCount] = useState(50);
-  const { sites, error } = useMultiSiteTelemetry(pointCount);
   const [activeSiteId, setActiveSiteId] = useState<SiteId | null>(null);
 
   const resolvedSiteId = activeSiteId ?? sites?.[0]?.info.id ?? null;
   const activeSite = (sites ?? []).find((s) => s.info.id === resolvedSiteId) ?? null;
-  const points = activeSite?.telemetry?.points ?? [];
+  const points = (activeSite?.telemetry?.points ?? []).slice(-pointCount);
   const latest = points[points.length - 1];
 
   return (

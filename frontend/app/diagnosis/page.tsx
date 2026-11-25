@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useMultiSiteTelemetry } from "@/lib/useMultiSiteTelemetry";
+import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
 import { withTransitions, type PointWithTransition } from "@/lib/transitions";
 import { SCENARIO_NAME_KO, SCENARIO_BADGE } from "@/lib/scenarioStyles";
 import { fetchSiteGuide, type FaultGuide, type SiteId } from "@/lib/api";
@@ -11,7 +11,7 @@ function parseSteps(actionGuide: string): string[] {
 }
 
 export default function DiagnosisPage() {
-  const { sites, error } = useMultiSiteTelemetry();
+  const { sites, error } = useSharedMultiSiteTelemetry();
   // 사이트별 11가지 세부 사례 가이드(backend/fault_tiers.py) - 장애 없는 사이트는 404라 null로 둔다.
   const [guides, setGuides] = useState<Partial<Record<SiteId, FaultGuide | null>>>({});
 

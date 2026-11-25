@@ -5,6 +5,7 @@ import Copilot from "@/components/Copilot";
 import CopilotErrorBoundary from "@/components/CopilotErrorBoundary";
 import Sidebar from "@/components/Sidebar";
 import { TelemetryProvider } from "@/lib/TelemetryContext";
+import { MultiSiteTelemetryProvider } from "@/lib/MultiSiteTelemetryContext";
 import { CopilotUIProvider } from "@/lib/CopilotUIContext";
 import { fetchTelemetry } from "@/lib/api";
 
@@ -38,14 +39,16 @@ export default async function RootLayout({
     >
       <body className="flex h-screen overflow-hidden">
         <TelemetryProvider initial={initial}>
-          <CopilotUIProvider>
-            <Sidebar />
-            <div className="flex-1 overflow-y-auto bg-slate-900">{children}</div>
-            {/* 실시간 진단 대시보드와 완전히 독립된 보조 위젯 - 에러 바운더리로 격리 */}
-            <CopilotErrorBoundary>
-              <Copilot />
-            </CopilotErrorBoundary>
-          </CopilotUIProvider>
+          <MultiSiteTelemetryProvider>
+            <CopilotUIProvider>
+              <Sidebar />
+              <div className="flex-1 overflow-y-auto bg-slate-900">{children}</div>
+              {/* 실시간 진단 대시보드와 완전히 독립된 보조 위젯 - 에러 바운더리로 격리 */}
+              <CopilotErrorBoundary>
+                <Copilot />
+              </CopilotErrorBoundary>
+            </CopilotUIProvider>
+          </MultiSiteTelemetryProvider>
         </TelemetryProvider>
       </body>
     </html>

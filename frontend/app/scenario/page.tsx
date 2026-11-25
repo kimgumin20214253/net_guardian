@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMultiSiteTelemetry } from "@/lib/useMultiSiteTelemetry";
+import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
 import { type ScenarioCode, type SiteId } from "@/lib/api";
 import { useCopilotUI } from "@/lib/CopilotUIContext";
 import { SCENARIO_NAME_KO as SCENARIO_LABEL, SCENARIO_TEXT as SCENARIO_SEVERITY_COLOR } from "@/lib/scenarioStyles";
@@ -17,7 +17,7 @@ const SCENARIO_BUTTONS: { code: ScenarioCode; label: string }[] = [
 ];
 
 export default function ScenarioPage() {
-  const { sites, error, pending, injectScenario, resolveFault } = useMultiSiteTelemetry();
+  const { sites, error, pending, injectScenario, resolveFault } = useSharedMultiSiteTelemetry();
   const { askCopilot } = useCopilotUI();
 
   // 모달에 띄울 "지금 주입하려는 시나리오". null이면 모달 닫힘.

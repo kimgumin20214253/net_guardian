@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMultiSiteTelemetry } from "@/lib/useMultiSiteTelemetry";
+import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
 import { SEVERITY_TEXT_COLOR } from "@/lib/severityStyles";
 import { withTransitions, type PointWithTransition } from "@/lib/transitions";
 import type { SiteId } from "@/lib/api";
@@ -47,7 +47,7 @@ function toCsv(rows: LogRow[]) {
 }
 
 export default function LogsPage() {
-  const { sites, error } = useMultiSiteTelemetry(200);
+  const { sites, error } = useSharedMultiSiteTelemetry();
 
   const allRows: LogRow[] = useMemo(() => {
     if (!sites) return [];
