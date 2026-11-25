@@ -45,8 +45,18 @@ SCENARIO_TO_DOC_ID = {
 
 
 def retrieve_top1(query: str, current_fault: str | None = None):
-    """질문(+현재 장애 상태)과 가장 유사한 매뉴얼 문서 1건을 코사인 유사도로 검색."""
-    combined_query = f"{current_fault or ''} {query}".strip()
+    """질문(+현재 장애 상태)과 가장 유사한 매뉴얼 문서 1건을 코사인 유사도로 검색.
+
+    예전에는 current_fault(A/B/C/D)를 그 한 글자 그대로 검색어 앞에 붙였는데, scikit-learn
+    TfidfVectorizer의 기본 토크나이저(token_pattern)는 2글자 이상인 토큰만 단어로 인식해서
+    한 글자짜리 코드가 그냥 통째로 버려졌다 - 그래서 current_fault는 실제로 검색 결과에
+    아무 영향을 못 줬다(단어장에 'a'/'b'/'c'/'d'가 존재하지 않는 것으로 직접 확인됨).
+    지금은 코드를 그대로 쓰는 대신, 그 시나리오에 해당하는 매뉴얼 문서 자신의 본문
+    (증상/추정원인)을 검색어에 실제로 섞어 넣는다 - 이 단어들은 전부 TF-IDF 단어장에 이미
+    있는 단어라서, 짧은 질문이 애매하더라도 지금 장애 쪾 매뉴얼로 확실히 끌려간다."""
+    fault_doc = get_guide_for_scenario(current_fault) if current_fault else None
+    fault_hint = f"{fault_doc['symptom']} {fault_doc['root_cause']}" if fault_doc else ""
+    combined_query = f"{fault_hint} {query}".strip()
     q_vec = _vectorizer.transform([combined_query])
     sims = cosine_similarity(q_vec, _doc_matrix)[0]
     idx = int(sims.argmax())
