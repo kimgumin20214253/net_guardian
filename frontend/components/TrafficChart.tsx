@@ -9,9 +9,15 @@ import {
   CartesianGrid,
   Legend,
   ReferenceLine,
+  Brush,
   ResponsiveContainer,
 } from "recharts";
 import type { TelemetryPoint } from "@/lib/api";
+
+// backend/fault_tiers.py의 RTO_MIN_MS와 같은 값(RFC 6298 RTO 최소값). 실제 RTO는 그 사이트의
+// SRTT/RTTVAR에 따라 이보다 커질 수 있으므로, 이 선은 "장애 기준선"이 아니라 "재전송 추정이
+// 걸릴 수 있는 최소 임계치"다 - RTT가 이 선을 넘는다고 바로 장애인 것은 아니다.
+const RTO_MIN_MS = 200;
 
 function toChartTime(timestamp: string) {
   return timestamp.slice(11, 19) || timestamp;
@@ -59,7 +65,7 @@ export default function TrafficChart({
       <div className="rounded-lg bg-slate-800 p-4 ring-1 ring-slate-700">
         <h2 className="mb-4 text-lg font-bold text-slate-100">RTT 실시간 그래프</h2>
 
-        <ResponsiveContainer width="100%" height={270}>
+        <ResponsiveContainer width="100%" height={300}>
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
             <XAxis dataKey="time" tick={AXIS_TICK} />
@@ -74,9 +80,16 @@ export default function TrafficChart({
               strokeWidth={3}
               dot={false}
             />
+            <ReferenceLine
+              y={RTO_MIN_MS}
+              stroke="#64748b"
+              strokeDasharray="2 2"
+              label={{ value: `RTO 최소 임계치 ${RTO_MIN_MS}ms`, position: "insideTopRight", fill: "#94a3b8", fontSize: 11 }}
+            />
             {showInjectionLine && (
               <ReferenceLine x={injectionX!} stroke="#818cf8" strokeDasharray="4 4" label={{ value: "주입", position: "insideTopLeft", fill: "#818cf8", fontSize: 11 }} />
             )}
+            <Brush dataKey="time" height={20} stroke="#475569" fill="#1e293b" travellerWidth={8} />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -85,7 +98,7 @@ export default function TrafficChart({
       <div className="rounded-lg bg-slate-800 p-4 ring-1 ring-slate-700">
         <h2 className="mb-4 text-lg font-bold text-slate-100">Packet Loss 그래프</h2>
 
-        <ResponsiveContainer width="100%" height={270}>
+        <ResponsiveContainer width="100%" height={300}>
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
             <XAxis dataKey="time" tick={AXIS_TICK} />
@@ -103,6 +116,7 @@ export default function TrafficChart({
             {showInjectionLine && (
               <ReferenceLine x={injectionX!} stroke="#818cf8" strokeDasharray="4 4" label={{ value: "주입", position: "insideTopLeft", fill: "#818cf8", fontSize: 11 }} />
             )}
+            <Brush dataKey="time" height={20} stroke="#475569" fill="#1e293b" travellerWidth={8} />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -111,7 +125,7 @@ export default function TrafficChart({
       <div className="rounded-lg bg-slate-800 p-4 ring-1 ring-slate-700">
         <h2 className="mb-4 text-lg font-bold text-slate-100">Jitter 그래프</h2>
 
-        <ResponsiveContainer width="100%" height={270}>
+        <ResponsiveContainer width="100%" height={300}>
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
             <XAxis dataKey="time" tick={AXIS_TICK} />
@@ -129,6 +143,7 @@ export default function TrafficChart({
             {showInjectionLine && (
               <ReferenceLine x={injectionX!} stroke="#818cf8" strokeDasharray="4 4" label={{ value: "주입", position: "insideTopLeft", fill: "#818cf8", fontSize: 11 }} />
             )}
+            <Brush dataKey="time" height={20} stroke="#475569" fill="#1e293b" travellerWidth={8} />
           </LineChart>
         </ResponsiveContainer>
       </div>

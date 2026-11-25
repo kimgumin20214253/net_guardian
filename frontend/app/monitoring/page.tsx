@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
 import { SCENARIO_NAME_KO, SCENARIO_BADGE, SCENARIO_DOT } from "@/lib/scenarioStyles";
 import TrafficChart from "@/components/TrafficChart";
-import type { SiteId } from "@/lib/api";
+import type { SiteId, TelemetryPoint } from "@/lib/api";
 
 const POINT_COUNT_OPTIONS = [50, 100, 200];
 const VALID_SITE_IDS: SiteId[] = ["site-1", "site-2", "site-3"];
@@ -31,8 +31,31 @@ function MonitoringPageInner() {
 
   const resolvedSiteId = activeSiteId ?? linkedSiteId ?? sites?.[0]?.info.id ?? null;
   const activeSite = (sites ?? []).find((s) => s.info.id === resolvedSiteId) ?? null;
-  const points = (activeSite?.telemetry?.points ?? []).slice(-pointCount);
+  const livePoints = (activeSite?.telemetry?.points ?? []).slice(-pointCount);
+
+  // 일시정지 - 공유 폴링(다른 화면)은 계속 돌리고, 이 화면의 그래프에 보여줄 배열만 그 순간
+  // 상태로 얼려둔다. 재개하면 다시 실시간 배열을 보여준다.
+  const [paused, setPaused] = useState(false);
+  const [frozenPoints, setFrozenPoints] = useState<TelemetryPoint[] | null>(null);
+  const points = paused && frozenPoints ? frozenPoints : livePoints;
   const latest = points[points.length - 1];
+
+  function togglePause() {
+    if (paused) {
+      setPaused(false);
+      setFrozenPoints(null);
+    } else {
+      setFrozenPoints(livePoints);
+      setPaused(true);
+    }
+  }
+
+  // 사이트 비교 - 같은 화면에 다른 사이트의 그래프를 나란히 하나 더 보여준다(시간축을 억지로
+  // 합치면 두 사이트의 실제 수신 시각이 다를 수 있어 왜곡되므로, 하나의 차트에 겹치지 않고
+  // 별도 차트로 둔다).
+  const [compareSiteId, setCompareSiteId] = useState<SiteId | "none">("none");
+  const compareSite = compareSiteId !== "none" ? (sites ?? []).find((s) => s.info.id === compareSiteId) ?? null : null;
+  const comparePoints = compareSite ? (compareSite.telemetry?.points ?? []).slice(-pointCount) : null;
 
   return (
     <main className="p-8 text-slate-100">
@@ -88,6 +111,26 @@ function MonitoringPageInner() {
               </button>
             ))}
           </div>
+          <button
+            onClick={togglePause}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium ring-1 transition ${
+              paused ? "bg-amber-500/10 text-amber-400 ring-amber-500/30" : "bg-slate-900 text-slate-300 ring-slate-700 hover:text-slate-100"
+            }`}
+          >
+            {paused ? "⏸ 일시정지됨 · 재개" : "⏸ 측정 일시정지"}
+          </button>
+          <select
+            value={compareSiteId}
+            onChange={(e) => setCompareSiteId(e.target.value as SiteId | "none")}
+            className="rounded-md border border-slate-600 bg-slate-900 px-2 py-1.5 text-xs text-slate-200"
+          >
+            <option value="none">비교 사이트 없음</option>
+            {(sites ?? []).filter((s) => s.info.id !== resolvedSiteId).map((s) => (
+              <option key={s.info.id} value={s.info.id}>
+                비교: {s.info.name}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -109,6 +152,21 @@ function MonitoringPageInner() {
       )}
 
       {sites && <TrafficChart points={points} injectionTime={activeSite?.lastInjectionTime ?? null} />}
+
+      {compareSite && comparePoints && (
+        <div className="mt-6">
+          <h2 className="mb-2 text-sm font-semibold text-slate-300">
+            비교: {compareSite.info.name}{" "}
+            <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${SCENARIO_BADGE[compareSite.info.scenario]}`}>
+              {SCENARIO_NAME_KO[compareSite.info.scenario]}
+            </span>
+          </h2>
+          <p className="mb-2 text-[11px] text-slate-500">
+            두 사이트는 수신 시각이 서로 다를 수 있어 하나의 그래프에 겹치지 않고 따로 표시합니다.
+          </p>
+          <TrafficChart points={comparePoints} injectionTime={compareSite.lastInjectionTime ?? null} />
+        </div>
+      )}
     </main>
   );
 }
