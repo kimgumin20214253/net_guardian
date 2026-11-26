@@ -37,6 +37,15 @@ export default async function RootLayout({
       lang="ko"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      {/* 대시보드 전체 기본 글꼴(나눔고딕) - next/font/google은 빌드 시점에 구글 폰트 서버에서
+          파일을 내려받아야 하는데, 한글 폰트는 유니코드 서브셋이 많아 네트워크가 막힌 환경에서는
+          빌드 자체가 실패한다. 대신 런타임에 브라우저가 직접 받아오는 방식(link 태그)을 쓴다. */}
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      <link
+        href="https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700;800&display=swap"
+        rel="stylesheet"
+      />
       <body className="flex h-screen overflow-hidden">
         <TelemetryProvider initial={initial}>
           <MultiSiteTelemetryProvider>
