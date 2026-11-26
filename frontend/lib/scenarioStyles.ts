@@ -43,3 +43,6 @@ export const LABEL_TO_SCENARIO: Record<number, ScenarioCode> = { 0: "A", 1: "B",
 export const SCENARIO_CANONICAL_SEVERITY: Record<ScenarioCode, Severity> = {
   A: "ok", B: "warning", C: "danger", D: "critical",
 };
+
+// 심각도 문자열끼리 비교해 "더 심각한 쪽"을 고를 때 쓰는 순서값.
+export const SEVERITY_RANK: Record<Severity, number> = { ok: 0, warning: 1, danger: 2, critical: 3 };
