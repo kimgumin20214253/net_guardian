@@ -133,17 +133,21 @@ export default function HomePage() {
     .sort()
     .at(-1);
 
-  // 가장 심각한(실제 장애 중인) 사이트 - AI가 그 순간 매기는 severity(유실·복합에서 흔들릴 수
-  // 있음)가 아니라, 시나리오 자체의 고정 심각도로 비교한다(코파일럿 "가장 심각한 사이트" 질문과
-  // 같은 기준).
-  const worstSite = useMemo(() => {
-    if (faultedSites.length === 0) return null;
+  // 장애 중인 사이트들을 심각도(시나리오 고정 심각도, AI 순간예측이 아님) 순으로 정렬 -
+  // 코파일럿 "가장 심각한 사이트" 질문과 같은 기준. 2개 이상 장애가 겹쳐도 전부 보여주기 위해
+  // 패널 안에서 페이지를 넘겨가며 볼 수 있게 한다.
+  const sortedFaultedSites = useMemo(() => {
     return [...faultedSites].sort(
       (a, b) =>
         SEVERITY_RANK[SCENARIO_CANONICAL_SEVERITY[b.info.scenario]] -
         SEVERITY_RANK[SCENARIO_CANONICAL_SEVERITY[a.info.scenario]]
-    )[0];
+    );
   }, [faultedSites]);
+  const faultCount = sortedFaultedSites.length;
+  const [faultIndex, setFaultIndex] = useState(0);
+  // 장애가 복구되어 목록이 줄어드는 사이 인덱스가 범위를 벗어날 수 있어 매 렌더마다 안전하게 자른다.
+  const safeFaultIndex = faultCount ? Math.min(faultIndex, faultCount - 1) : 0;
+  const worstSite = sortedFaultedSites[safeFaultIndex] ?? null;
   const worstLatest = worstSite ? latestOf(worstSite) : null;
   const worstConfidence = worstLatest?.predicted.probabilities
     ? worstLatest.predicted.probabilities[String(worstLatest.predicted.label)]
@@ -287,9 +291,34 @@ export default function HomePage() {
         </div>
 
         <div className="rounded-xl bg-slate-800 p-5 ring-1 ring-slate-700">
-          <div className="mb-3 flex items-center gap-2">
-            <IconBrain className="h-4 w-4 text-slate-400" />
-            <h2 className="text-[15px] font-semibold text-white">AI 장애 진단</h2>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <IconBrain className="h-4 w-4 text-slate-400" />
+              <h2 className="text-[15px] font-semibold text-white">AI 장애 진단</h2>
+            </div>
+            {faultCount > 1 && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setFaultIndex((safeFaultIndex - 1 + faultCount) % faultCount)}
+                  aria-label="이전 장애 사이트"
+                  className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-700 hover:text-slate-200"
+                >
+                  ‹
+                </button>
+                <span className="text-[11px] font-medium text-slate-500">
+                  {safeFaultIndex + 1}/{faultCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFaultIndex((safeFaultIndex + 1) % faultCount)}
+                  aria-label="다음 장애 사이트"
+                  className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-700 hover:text-slate-200"
+                >
+                  ›
+                </button>
+              </div>
+            )}
           </div>
           {!sites ? (
             <p className="text-sm text-slate-400">불러오는 중입니다.</p>
