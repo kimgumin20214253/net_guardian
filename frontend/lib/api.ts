@@ -150,6 +150,16 @@ export async function fetchAllEvents(limit = 100): Promise<{ events: SiteEvent[]
   return res.json();
 }
 
+/** "최근 N건" 건수 제한이 아니라 실제 "지난 hours시간" 전체를 건수 제한 없이 가져온다 - 장애유형
+ *  분포(최근 24시간)처럼 "그 시간 동안 몇 건이었는가"를 정확히 답해야 하는 집계 전용. 활동이
+ *  많은 사이트에서 fetchAllEvents()의 limit에 걸려 오래된(하지만 아직 진행 중인) 장애 기록이
+ *  조용히 빠지는 문제가 있어 분리했다. */
+export async function fetchEventsSince(hours: number): Promise<{ events: SiteEvent[] }> {
+  const res = await fetch(`${API_BASE}/events?hours=${hours}`, { cache: "no-store" });
+  if (!res.ok) return throwApiError(res);
+  return res.json();
+}
+
 export type CopilotResponse = {
   answer: string;
   source: string;

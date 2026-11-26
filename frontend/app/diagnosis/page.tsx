@@ -5,10 +5,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "rec
 import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
 import { SCENARIO_NAME_KO, SCENARIO_BADGE, SCENARIO_TEXT } from "@/lib/scenarioStyles";
 import { fetchSiteGuide, type FaultGuide, type SiteId, type TelemetryPoint } from "@/lib/api";
-
-function parseSteps(actionGuide: string): string[] {
-  return actionGuide.split("\n").map((l) => l.trim()).filter(Boolean);
-}
+import ActionChecklist from "@/components/ActionChecklist";
 
 const AXIS_TICK = { fontSize: 11, fill: "#94a3b8" };
 const TOOLTIP_STYLE = { fontSize: 12, background: "#1e293b", border: "1px solid #334155", color: "#e2e8f0" };
@@ -40,7 +37,7 @@ function ConfidenceTrend({ points }: { points: TelemetryPoint[] }) {
 }
 
 export default function DiagnosisPage() {
-  const { sites, events, error } = useSharedMultiSiteTelemetry();
+  const { sites, events, error, resolveFault } = useSharedMultiSiteTelemetry();
   // 사이트별 11가지 세부 사례 가이드(backend/fault_tiers.py) - 장애 없는 사이트는 404라 null로 둔다.
   const [guides, setGuides] = useState<Partial<Record<SiteId, FaultGuide | null>>>({});
 
@@ -139,7 +136,7 @@ export default function DiagnosisPage() {
               )}
 
               {faulted && guide && (
-                <div className="rounded-md border border-blue-500/30 bg-blue-500/5 p-3">
+                <div>
                   <p className="mb-1 text-sm font-semibold text-blue-200">
                     세부 진단: {guide.name_ko}
                   </p>
@@ -148,12 +145,8 @@ export default function DiagnosisPage() {
                       이 진단의 근거가 된 현재 실측값: RTT {latest.rtt.toFixed(1)}ms · Loss {latest.loss_flag} · Jitter {latest.jitter.toFixed(1)}ms
                     </p>
                   )}
-                  <ol className="mb-2 list-inside list-decimal space-y-0.5 text-sm text-slate-300">
-                    {parseSteps(guide.action_guide).map((step, i) => (
-                      <li key={i}>{step.replace(/^\d+\.\s*/, "")}</li>
-                    ))}
-                  </ol>
-                  <p className="text-[11px] text-blue-400/70">근거: {guide.reference}</p>
+                  {/* 체크리스트를 전부 완료하면 /scenario와 동일하게 자동으로 정상 복귀 처리한다. */}
+                  <ActionChecklist siteId={site.info.id} onComplete={() => resolveFault(site.info.id)} />
                 </div>
               )}
 

@@ -157,6 +157,31 @@ def _read_events(site_id: str, limit: int) -> list[dict]:
     return events
 
 
+def _read_events_since(site_id: str, cutoff_timestamp: str) -> list[dict]:
+    """최근 N건(count)이 아니라 실제 "지난 X시간" 같은 시간 범위 질의용 - 건수 제한(limit) 기반
+    조회는 접속 중인 사이트가 많거나 테스트가 잦으면, 아직도 진행 중인 오래된 장애의 시작 기록이
+    "최근 limit건" 밖으로 밀려나 24시간 집계에서 조용히 빠지는 문제가 있었다(사용자 제보, 재현
+    확인 - 우분투에 오래 켜둔 인스턴스에서 전체 이벤트 수가 limit을 넘어서면서 발생). 파일 전체를
+    읽어 타임스탬프로 직접 걸러내므로 건수와 무관하게 정확하다."""
+    path = EVENTS_PATH[site_id]
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as f:
+        lines = f.readlines()
+    events = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if ev.get("timestamp", "") >= cutoff_timestamp:
+            events.append(ev)
+    return events
+
+
 async def _random_injection_loop():
     """5분마다, 현재 정상이고 쿨다운 중이 아닌 사이트 중 하나를 무작위로 골라 B/C/D 중 하나를 주입한다."""
     while True:
@@ -481,9 +506,22 @@ def site_events(site_id: str, limit: int = 50):
 
 
 @app.get("/events")
-def all_events(limit: int = 50):
-    """3개 사이트의 이벤트를 합쳐 시간순으로 최신 limit건만 반환 - 종합 관제/이벤트 이력처럼
-    전체를 한 번에 보여줘야 하는 화면이 사이트마다 따로 호출하지 않도록 하는 편의 엔드포인트."""
+def all_events(limit: int = 50, hours: float | None = None):
+    """3개 사이트의 이벤트를 합쳐 시간순으로 반환 - 종합 관제/이벤트 이력처럼 전체를 한 번에
+    보여줘야 하는 화면이 사이트마다 따로 호출하지 않도록 하는 편의 엔드포인트.
+
+    hours가 주어지면 "최근 limit건"이 아니라 실제 "지난 hours시간" 전체를 반환한다(건수 제한
+    없음) - 예: 장애유형 분포(최근 24시간) 집계처럼 "그 시간 동안 실제로 몇 건이었는가"를 정확히
+    답해야 하는 화면 전용. limit 기반 조회는 여전히 "최근 이벤트" 같은 짧은 활동 피드에 쓰인다."""
+    if hours is not None:
+        cutoff = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - hours * 3600))
+        merged = [
+            {"site": site_id, **ev}
+            for site_id in SITES
+            for ev in _read_events_since(site_id, cutoff)
+        ]
+        merged.sort(key=lambda e: e["timestamp"])
+        return {"events": merged}
     merged = [
         {"site": site_id, **ev}
         for site_id in SITES

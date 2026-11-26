@@ -1,32 +1,54 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { SCENARIO_NAME_KO } from "@/lib/scenarioStyles";
-import type { ScenarioCode, SiteEvent } from "@/lib/api";
+import { fetchEventsSince, type ScenarioCode, type SiteEvent } from "@/lib/api";
 
 const COLORS: Record<ScenarioCode, string> = {
   A: "#34d399", B: "#fbbf24", C: "#f87171", D: "#a78bfa",
 };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const REFRESH_MS = 30_000;
 
-/** 백엔드가 영구 기록한 이벤트(GET /events, 실제 timestamp)에서 최근 24시간 fault_started를
- *  시나리오별로 집계한다. 서버가 24시간 내내 떠 있지 않았다면 그만큼만 집계되는 게 맞다 -
- *  돌지 않은 시간을 지어내 채우지 않는다. */
-export default function FaultTypeDonut({ events }: { events: SiteEvent[] | null }) {
-  // 렌더 중 Date.now()를 직접 호출할 수 없어(react-hooks/purity), 마운트 시점 한 번만 고정한다 -
-  // "최근 24시간" 판정 기준이 이 화면을 연 시점이 되는 것이라 실용적으로 충분하다.
-  const [since] = useState(() => Date.now() - DAY_MS);
+/** 백엔드가 영구 기록한 이벤트에서 최근 24시간 fault_started를 시나리오별로 집계한다. 서버가
+ *  24시간 내내 떠 있지 않았다면 그만큼만 집계되는 게 맞다 - 돌지 않은 시간을 지어내 채우지
+ *  않는다. 다른 화면이 공유하는 "최근 limit건" 폴링(useSharedMultiSiteTelemetry)은 쓰지 않고
+ *  직접 /events?hours=24를 호출한다 - 활동이 많은 환경(예: 오래 켜둔 인스턴스)에서는 건수 제한
+ *  때문에 아직 진행 중인 오래된 장애의 시작 기록이 "최근 limit건" 밖으로 밀려나 24시간 집계가
+ *  조용히 틀려지는 문제가 있었다(사용자 제보, 재현 확인). */
+export default function FaultTypeDonut() {
+  const [events, setEvents] = useState<SiteEvent[] | null>(null);
+  const [failed, setFailed] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    function load() {
+      fetchEventsSince(24)
+        .then((res) => {
+          if (cancelled) return;
+          setEvents(res.events);
+          setFailed(false);
+        })
+        .catch(() => {
+          if (!cancelled) setFailed(true);
+        });
+    }
+    load();
+    const id = setInterval(load, REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  if (failed) {
+    return <p className="text-sm text-slate-400">장애 유형 통계를 불러올 수 없습니다.</p>;
+  }
   if (!events) {
     return <p className="text-sm text-slate-400">불러오는 중입니다.</p>;
   }
-  const recentFaults = events.filter((ev) => {
-    if (ev.type !== "fault_started") return false;
-    const t = new Date(ev.timestamp.replace(" ", "T")).getTime();
-    return !Number.isNaN(t) && t >= since;
-  });
+  const recentFaults = events.filter((ev) => ev.type === "fault_started");
 
   if (recentFaults.length === 0) {
     return (

@@ -427,7 +427,7 @@ export default function HomePage() {
 
         <div className="rounded-xl bg-slate-800 p-5 ring-1 ring-slate-700">
           <h2 className="mb-3 text-[15px] font-semibold text-white">장애 유형 분포 (최근 24시간)</h2>
-          <FaultTypeDonut events={events} />
+          <FaultTypeDonut />
         </div>
       </section>
     </main>
