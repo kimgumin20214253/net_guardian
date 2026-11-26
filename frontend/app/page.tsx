@@ -159,6 +159,8 @@ export default function HomePage() {
   }, [events, sites]);
 
   const alertCount = warningSites.length + dangerSites.length;
+  const alertSites = useMemo(() => [...dangerSites, ...warningSites], [dangerSites, warningSites]);
+  const [alertMenuOpen, setAlertMenuOpen] = useState(false);
 
   return (
     <main className="p-8 text-slate-100">
@@ -180,11 +182,49 @@ export default function HomePage() {
             {dataSource === "live" ? "실시간 데이터" : dataSource === "demo" ? "데모 데이터" : "-"}
           </span>
           <div className="relative">
-            <IconBell className="h-5 w-5 text-slate-400" />
-            {alertCount > 0 && (
-              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                {alertCount}
-              </span>
+            <button
+              type="button"
+              onClick={() => setAlertMenuOpen((v) => !v)}
+              aria-label="경고/위험 사이트 목록"
+              className="rounded-md p-1 text-slate-400 transition hover:bg-slate-800 hover:text-slate-200"
+            >
+              <IconBell className="h-5 w-5" />
+              {alertCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                  {alertCount}
+                </span>
+              )}
+            </button>
+
+            {alertMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setAlertMenuOpen(false)} />
+                <div className="absolute right-0 top-full z-50 mt-2 w-72 rounded-lg bg-slate-800 p-2 shadow-xl ring-1 ring-slate-700">
+                  <p className="px-2 py-1.5 text-xs font-semibold text-slate-400">
+                    경고·위험 사이트 {alertCount}건
+                  </p>
+                  {alertSites.length === 0 ? (
+                    <p className="px-2 py-3 text-sm text-slate-400">현재 경고·위험 사이트가 없습니다.</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {alertSites.map((site) => (
+                        <li key={site.info.id}>
+                          <Link
+                            href={`/diagnosis?site=${site.info.id}`}
+                            onClick={() => setAlertMenuOpen(false)}
+                            className="flex items-center justify-between rounded-md px-2 py-2 text-sm text-slate-200 transition hover:bg-slate-700"
+                          >
+                            <span>{site.info.name}</span>
+                            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${SCENARIO_BADGE[site.info.scenario]}`}>
+                              {SCENARIO_NAME_KO[site.info.scenario]}
+                            </span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </>
             )}
           </div>
         </div>
