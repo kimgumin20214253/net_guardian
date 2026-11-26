@@ -4,6 +4,7 @@ import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
 import { SEVERITY_TEXT_COLOR } from "@/lib/severityStyles";
+import { SCENARIO_NAME_KO, SCENARIO_BADGE } from "@/lib/scenarioStyles";
 import { withTransitions, type PointWithTransition } from "@/lib/transitions";
 import type { SiteId } from "@/lib/api";
 
@@ -31,47 +32,8 @@ function levelFor(p: LogRow) {
   return p.transition === "recovered" ? "RECOVERED" : LEVEL_BY_SEVERITY[p.predicted.severity];
 }
 
-type FaultDuration = {
-  siteName: string;
-  startedAt: string;
-  recoveredAt: string;
-  durationMs: number;
-};
-
-/** fault_started -> 그 다음에 오는 recovered(같은 사이트)를 짝지어 지속시간을 구한다.
- *  아직 복구되지 않은 장애(짝이 없는 fault_started)는 포함하지 않는다 - 끝나지 않은 걸
- *  지속시간으로 보여주면 숫자를 지어내는 셈이 되기 때문이다. */
-function pairFaultDurations(rows: LogRow[]): FaultDuration[] {
-  const bySite = new Map<SiteId, LogRow[]>();
-  for (const r of rows) {
-    if (!r.transition) continue;
-    const list = bySite.get(r.siteId) ?? [];
-    list.push(r);
-    bySite.set(r.siteId, list);
-  }
-  const results: FaultDuration[] = [];
-  for (const [, events] of bySite) {
-    const sorted = [...events].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-    let pendingStart: LogRow | null = null;
-    for (const ev of sorted) {
-      if (ev.transition === "fault_started") {
-        pendingStart = ev;
-      } else if (ev.transition === "recovered" && pendingStart) {
-        results.push({
-          siteName: ev.siteName,
-          startedAt: pendingStart.timestamp,
-          recoveredAt: ev.timestamp,
-          durationMs: new Date(ev.timestamp).getTime() - new Date(pendingStart.timestamp).getTime(),
-        });
-        pendingStart = null;
-      }
-    }
-  }
-  return results.sort((a, b) => b.recoveredAt.localeCompare(a.recoveredAt));
-}
-
-function formatDuration(ms: number) {
-  const totalSec = Math.max(0, Math.round(ms / 1000));
+function formatDuration(sec: number) {
+  const totalSec = Math.max(0, Math.round(sec));
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
@@ -105,7 +67,7 @@ export default function LogsPage() {
 }
 
 function LogsPageInner() {
-  const { sites, error } = useSharedMultiSiteTelemetry();
+  const { sites, events, error } = useSharedMultiSiteTelemetry();
 
   const allRows: LogRow[] = useMemo(() => {
     if (!sites) return [];
@@ -146,7 +108,23 @@ function LogsPageInner() {
     });
   }, [allRows, severityFilter, siteFilter, keyword, fromTime, toTime]);
 
-  const faultDurations = useMemo(() => pairFaultDurations(filteredRows), [filteredRows]);
+  // 장애 지속시간 요약 - 백엔드가 영구 기록한 이벤트(GET /events)의 실측 elapsed_sec를 그대로
+  // 쓴다(클라이언트에서 시작/복구를 다시 추론하지 않음). 같은 사이트/기간 필터를 적용한다.
+  const faultDurations = useMemo(() => {
+    if (!events) return [];
+    return events
+      .filter((ev) => ev.type === "recovered" && ev.elapsed_sec !== null)
+      .filter((ev) => siteFilter === "all" || ev.site === siteFilter)
+      .filter((ev) => !fromTime || ev.timestamp >= fromTime)
+      .filter((ev) => !toTime || ev.timestamp <= toTime)
+      .map((ev) => ({
+        siteName: sites?.find((s) => s.info.id === ev.site)?.info.name ?? ev.site,
+        scenario: ev.scenario,
+        recoveredAt: ev.timestamp,
+        elapsedSec: ev.elapsed_sec as number,
+      }))
+      .sort((a, b) => b.recoveredAt.localeCompare(a.recoveredAt));
+  }, [events, sites, siteFilter, fromTime, toTime]);
 
   function exportCsv() {
     const csv = toCsv(filteredRows);
@@ -228,14 +206,18 @@ function LogsPageInner() {
         </button>
       </div>
 
-      {/* fault_started -> recovered 페어링으로 지속시간 계산 (완료된 구간만) */}
+      {/* 백엔드가 기록한 실제 지속시간(elapsed_sec) - 복구 완료된 구간만 */}
       {faultDurations.length > 0 && (
         <div className="mb-4 rounded-lg bg-slate-800 p-4 ring-1 ring-slate-700">
           <h2 className="mb-2 text-sm font-semibold text-white">장애 지속시간 요약 (복구 완료된 구간만)</h2>
           <div className="flex flex-wrap gap-2 text-xs">
             {faultDurations.slice(0, 10).map((d, i) => (
-              <span key={i} className="rounded-full bg-slate-900 px-2.5 py-1 text-slate-300 ring-1 ring-slate-700">
-                {d.siteName} · {d.startedAt.slice(11, 19)}→{d.recoveredAt.slice(11, 19)} · {formatDuration(d.durationMs)}
+              <span key={i} className="flex items-center gap-1.5 rounded-full bg-slate-900 px-2.5 py-1 text-slate-300 ring-1 ring-slate-700">
+                {d.siteName}
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${SCENARIO_BADGE[d.scenario]}`}>
+                  {SCENARIO_NAME_KO[d.scenario]}
+                </span>
+                복구 {d.recoveredAt.slice(11, 19)} · {formatDuration(d.elapsedSec)} 지속
               </span>
             ))}
           </div>

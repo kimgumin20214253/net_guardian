@@ -4,8 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
 import { type SiteState } from "@/lib/useMultiSiteTelemetry";
-import { withTransitions, type PointWithTransition } from "@/lib/transitions";
-import { SCENARIO_NAME_KO, SCENARIO_BADGE, SCENARIO_DOT, SCENARIO_RING, LABEL_TO_SCENARIO } from "@/lib/scenarioStyles";
+import { SCENARIO_NAME_KO, SCENARIO_BADGE, SCENARIO_DOT, SCENARIO_RING } from "@/lib/scenarioStyles";
 import TrafficChart from "@/components/TrafficChart";
 import FaultTrendChart from "@/components/FaultTrendChart";
 import type { SiteId } from "@/lib/api";
@@ -25,7 +24,7 @@ function formatClock(timestamp: string | undefined) {
 export default function HomePage() {
   // 레이아웃에서 이미 최대 200건을 받아와 모든 페이지가 공유한다 - 다시 네트워크를 타지 않고
   // "최근 N건" 선택은 그 안에서 화면에 보여줄 범위만 잘라서 쓴다(더 빠르게 즉시 반영됨).
-  const { sites, error } = useSharedMultiSiteTelemetry();
+  const { sites, events, error } = useSharedMultiSiteTelemetry();
   const [pointCount, setPointCount] = useState(50);
   const [chartSiteId, setChartSiteId] = useState<SiteId | null>(null);
 
@@ -76,19 +75,16 @@ export default function HomePage() {
   const activeChartSiteId = chartSiteId ?? faultedSites[0]?.info.id ?? sites?.[0]?.info.id ?? null;
   const activeSite = (sites ?? []).find((s) => s.info.id === activeChartSiteId) ?? null;
 
-  // 최근 이벤트 - AI의 순간 예측이 아니라 실제 주입된 시나리오(true_label) 기준으로 장애
-  // 발생/복구 시점을 감지한다 (3개 사이트를 합쳐 시간순으로 정리). 실제 수신한 데이터에서만
-  // 뽑으므로, 이 창에 잡힌 전환이 없으면 그냥 "최근 이벤트 없음"으로 둔다.
-  const events = useMemo(() => {
-    if (!sites) return [];
-    type EventRow = PointWithTransition & { siteId: SiteId; siteName: string };
-    const rows: EventRow[] = sites.flatMap((s) =>
-      withTransitions(s.telemetry?.points ?? [])
-        .filter((p) => p.transition)
-        .map((p) => ({ ...p, siteId: s.info.id, siteName: s.info.name }))
-    );
-    return rows.sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 8);
-  }, [sites]);
+  // 최근 이벤트 - 백엔드가 영구 기록한 장애 발생/복구 이벤트(GET /events). 예전엔 폴링 창(최근
+  // N건, 실제로는 20~60초 분량)에서 추론해서 그 창을 벗어나면 금방 사라지는 문제가 있었는데,
+  // 이제는 전환 순간에 직접 기록한 데이터라 폴링 창 크기와 무관하게 계속 남아있다.
+  const recentEvents = useMemo(() => {
+    if (!events) return [];
+    return [...events]
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .slice(0, 8)
+      .map((ev) => ({ ...ev, siteName: sites?.find((s) => s.info.id === ev.site)?.info.name ?? ev.site }));
+  }, [events, sites]);
 
   return (
     <main className="p-8 text-slate-100">
@@ -239,10 +235,10 @@ export default function HomePage() {
       <section className="mb-6 rounded-lg bg-slate-800 p-5 ring-1 ring-slate-700">
         <h2 className="mb-1 text-lg font-semibold text-white">네트워크 장애 추이</h2>
         <p className="mb-4 text-xs text-slate-500">
-          최근 수집 데이터 기준 분 단위 장애 발생/정상 복구 횟수입니다 (전체 운영 이력이 아니라
-          현재 폴링 창에 들어온 데이터만 집계합니다).
+          분 단위 장애 발생/정상 복구 횟수입니다. 백엔드가 전환 순간에 직접 기록한 이벤트라 폴링
+          창 크기와 무관하게 계속 남아있습니다(최근 최대 100건).
         </p>
-        <FaultTrendChart sites={sites} />
+        <FaultTrendChart events={events} />
       </section>
 
       {/* 실시간 네트워크 모니터링 */}
@@ -339,32 +335,31 @@ export default function HomePage() {
               전체 이벤트 이력 →
             </Link>
           </div>
-          {events.length === 0 ? (
-            <p className="text-sm text-slate-400">최근 수신한 데이터 안에서는 장애 발생/복구 이벤트가 없습니다.</p>
+          {recentEvents.length === 0 ? (
+            <p className="text-sm text-slate-400">
+              {events ? "장애 발생/복구 이벤트가 아직 없습니다." : "불러오는 중입니다."}
+            </p>
           ) : (
             <ul className="space-y-2 text-sm">
-              {events.map((ev, i) => {
-                const scenario = ev.true_label !== null ? LABEL_TO_SCENARIO[ev.true_label] : null;
-                return (
-                  <li key={`${ev.timestamp}-${i}`} className="flex items-center gap-2 border-b border-slate-800 pb-2 last:border-0">
-                    <span className="w-20 flex-shrink-0 text-xs text-slate-500">{formatClock(ev.timestamp)}</span>
-                    {ev.transition === "fault_started" ? (
-                      <span className="text-red-400">🚨 장애 발생</span>
-                    ) : (
-                      <span className="text-emerald-400">✅ 정상 복구</span>
-                    )}
-                    <span className="text-slate-400">— {ev.siteName}</span>
-                    {scenario && (
-                      <span className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-medium ${SCENARIO_BADGE[scenario]}`}>
-                        {SCENARIO_NAME_KO[scenario]}
-                      </span>
-                    )}
-                    <Link href={`/logs?site=${ev.siteId}`} className="flex-shrink-0 text-[11px] font-medium text-blue-400 hover:text-blue-300">
-                      상세 →
-                    </Link>
-                  </li>
-                );
-              })}
+              {recentEvents.map((ev, i) => (
+                <li key={`${ev.timestamp}-${i}`} className="flex items-center gap-2 border-b border-slate-800 pb-2 last:border-0">
+                  <span className="w-20 flex-shrink-0 text-xs text-slate-500">{formatClock(ev.timestamp)}</span>
+                  {ev.type === "fault_started" ? (
+                    <span className="text-red-400">🚨 장애 발생</span>
+                  ) : (
+                    <span className="text-emerald-400">
+                      ✅ 정상 복구{ev.elapsed_sec !== null && ` (${Math.round(ev.elapsed_sec)}초 지속)`}
+                    </span>
+                  )}
+                  <span className="text-slate-400">— {ev.siteName}</span>
+                  <span className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-medium ${SCENARIO_BADGE[ev.scenario]}`}>
+                    {SCENARIO_NAME_KO[ev.scenario]}
+                  </span>
+                  <Link href={`/logs?site=${ev.site}`} className="flex-shrink-0 text-[11px] font-medium text-blue-400 hover:text-blue-300">
+                    상세 →
+                  </Link>
+                </li>
+              ))}
             </ul>
           )}
         </section>

@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { useSharedMultiSiteTelemetry } from "@/lib/MultiSiteTelemetryContext";
-import { withTransitions, type PointWithTransition } from "@/lib/transitions";
 import { SCENARIO_NAME_KO, SCENARIO_BADGE, SCENARIO_TEXT } from "@/lib/scenarioStyles";
 import { fetchSiteGuide, type FaultGuide, type SiteId, type TelemetryPoint } from "@/lib/api";
 
@@ -41,7 +40,7 @@ function ConfidenceTrend({ points }: { points: TelemetryPoint[] }) {
 }
 
 export default function DiagnosisPage() {
-  const { sites, error } = useSharedMultiSiteTelemetry();
+  const { sites, events, error } = useSharedMultiSiteTelemetry();
   // 사이트별 11가지 세부 사례 가이드(backend/fault_tiers.py) - 장애 없는 사이트는 404라 null로 둔다.
   const [guides, setGuides] = useState<Partial<Record<SiteId, FaultGuide | null>>>({});
 
@@ -59,16 +58,14 @@ export default function DiagnosisPage() {
     });
   }, [sites?.map((s) => `${s.info.id}:${s.info.scenario}`).join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const events = useMemo(() => {
-    if (!sites) return [];
-    type EventRow = PointWithTransition & { siteName: string };
-    const rows: EventRow[] = sites.flatMap((s) =>
-      withTransitions(s.telemetry?.points ?? [])
-        .filter((p) => p.transition)
-        .map((p) => ({ ...p, siteName: s.info.name }))
-    );
-    return rows.sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 10);
-  }, [sites]);
+  // 백엔드가 영구 기록한 장애 발생/복구 이벤트 - 폴링 창 크기와 무관하게 계속 남아있다.
+  const recentEvents = useMemo(() => {
+    if (!events) return [];
+    return [...events]
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .slice(0, 10)
+      .map((ev) => ({ ...ev, siteName: sites?.find((s) => s.info.id === ev.site)?.info.name ?? ev.site }));
+  }, [events, sites]);
 
   return (
     <main className="p-8 text-slate-100">
@@ -213,19 +210,21 @@ export default function DiagnosisPage() {
 
       <div className="mt-6 rounded-lg bg-slate-800 p-5 ring-1 ring-slate-700">
         <h2 className="mb-4 text-lg font-semibold text-white">최근 진단 이력</h2>
-        {!sites ? (
+        {!events ? (
           <p className="text-sm text-slate-400">불러오는 중입니다.</p>
-        ) : events.length === 0 ? (
-          <p className="text-sm text-slate-400">최근 수신한 데이터 안에서는 장애 발생/복구 이벤트가 없습니다.</p>
+        ) : recentEvents.length === 0 ? (
+          <p className="text-sm text-slate-400">장애 발생/복구 이벤트가 아직 없습니다.</p>
         ) : (
           <ul className="space-y-2 text-sm">
-            {events.map((ev, i) => (
+            {recentEvents.map((ev, i) => (
               <li key={`${ev.timestamp}-${i}`} className="flex items-center gap-2 border-b border-slate-700 pb-2 last:border-0">
                 <span className="w-20 flex-shrink-0 text-xs text-slate-500">{ev.timestamp.slice(11, 19)}</span>
-                {ev.transition === "fault_started" ? (
+                {ev.type === "fault_started" ? (
                   <span className="text-red-400">🚨 장애 발생</span>
                 ) : (
-                  <span className="text-emerald-400">✅ 정상 복구</span>
+                  <span className="text-emerald-400">
+                    ✅ 정상 복구{ev.elapsed_sec !== null && ` (${Math.round(ev.elapsed_sec)}초 지속)`}
+                  </span>
                 )}
                 <span className="text-slate-400">— {ev.siteName}</span>
               </li>

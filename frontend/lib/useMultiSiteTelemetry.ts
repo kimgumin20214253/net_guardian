@@ -6,10 +6,12 @@ import {
   fetchSiteTelemetry,
   setSiteScenario,
   resolveSite,
+  fetchAllEvents,
   type SiteId,
   type SiteInfo,
   type ScenarioCode,
   type TelemetryResponse,
+  type SiteEvent,
 } from "@/lib/api";
 
 const POLL_INTERVAL_MS = 3000;
@@ -40,6 +42,7 @@ type CooldownBase = { value: number; at: number };
  */
 export function useMultiSiteTelemetry(pointCount: number = 50) {
   const [sites, setSites] = useState<SiteState[] | null>(null);
+  const [events, setEvents] = useState<SiteEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<{ siteId: SiteId; scenario: ScenarioCode } | null>(null);
 
@@ -96,7 +99,10 @@ export function useMultiSiteTelemetry(pointCount: number = 50) {
       const seqAtStart = actionSeqRef.current;
       try {
         const { sites: list } = await fetchSites();
-        const telemetries = await Promise.all(list.map((s) => fetchSiteTelemetry(s.id, pointCount)));
+        const [telemetries, eventsRes] = await Promise.all([
+          Promise.all(list.map((s) => fetchSiteTelemetry(s.id, pointCount))),
+          fetchAllEvents(),
+        ]);
         // 이 폴링이 진행되는 동안 수동 조작(주입/조치)이 일어났다면 그 결과를 덮어쓰지 않는다.
         if (cancelled || actionSeqRef.current !== seqAtStart) return;
         list.forEach((info) => rememberCooldown(info.id, info.cooldown_remaining));
@@ -107,6 +113,7 @@ export function useMultiSiteTelemetry(pointCount: number = 50) {
             lastInjectionTime: lastInjectionRef.current[info.id] ?? null,
           }))
         );
+        setEvents(eventsRes.events);
         setError(null);
       } catch {
         if (!cancelled && actionSeqRef.current === seqAtStart) setError(CONNECTION_ERROR);
@@ -162,5 +169,5 @@ export function useMultiSiteTelemetry(pointCount: number = 50) {
       info: { ...s.info, cooldown_remaining: liveCooldowns[s.info.id] ?? s.info.cooldown_remaining },
     })) ?? null;
 
-  return { sites: liveSites, error, pending, injectScenario, resolveFault };
+  return { sites: liveSites, events, error, pending, injectScenario, resolveFault };
 }

@@ -134,6 +134,22 @@ export async function resolveSite(
   return res.json();
 }
 
+/** 장애 발생/복구 영구 기록 (백엔드가 실제 전환 순간에 직접 기록 - 폴링 창 크기와 무관하게
+ *  남아있다). recovered의 elapsed_sec는 그 장애가 실제로 지속된 초(백엔드가 알 때만, 모르면 null). */
+export type SiteEvent = {
+  site: SiteId;
+  type: "fault_started" | "recovered";
+  scenario: ScenarioCode;
+  timestamp: string;
+  elapsed_sec: number | null;
+};
+
+export async function fetchAllEvents(limit = 100): Promise<{ events: SiteEvent[] }> {
+  const res = await fetch(`${API_BASE}/events?limit=${limit}`, { cache: "no-store" });
+  if (!res.ok) return throwApiError(res);
+  return res.json();
+}
+
 export type CopilotResponse = {
   answer: string;
   source: string;

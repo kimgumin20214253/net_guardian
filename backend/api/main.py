@@ -1,5 +1,6 @@
 import asyncio
 import glob
+import json
 import os
 import random
 import time
@@ -118,6 +119,44 @@ def _cooldown_remaining(site_id: str) -> int:
     return max(0, round(remaining))
 
 
+# ── 장애 이벤트 영구 기록 ──────────────────────────────────────────────
+# "네트워크 장애 추이"/"최근 이벤트"가 폴링 창(최근 N건, 실제로는 20~60초 분량 - 수집 주기가
+# 0.1초라서)에서 추론되다 보니, 장애 시작 기록이 그 창을 벗어나면 화면에서 바로 사라지는
+# 문제가 있었다(사용자 제보, 재현 확인). data/ 디렉터리는 이미 .gitignore로 통째로 무시되고
+# 기존 CSV도 여기 쌓이므로, 같은 방식(append-only)으로 사이트별 JSONL에 영구 기록한다.
+EVENTS_PATH = {site_id: os.path.join(BASE_DIR, "data", f"events_{site_id}.jsonl") for site_id in SITES}
+
+
+def _record_event(site_id: str, event_type: str, scenario: str | None, elapsed_sec: float | None = None) -> None:
+    event = {
+        "type": event_type,
+        "scenario": scenario,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "elapsed_sec": round(elapsed_sec, 1) if elapsed_sec is not None else None,
+    }
+    os.makedirs(os.path.dirname(EVENTS_PATH[site_id]), exist_ok=True)
+    with open(EVENTS_PATH[site_id], "a", encoding="utf-8") as f:
+        f.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+
+def _read_events(site_id: str, limit: int) -> list[dict]:
+    path = EVENTS_PATH[site_id]
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as f:
+        lines = f.readlines()[-limit:]
+    events = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue  # 수집기가 겹쳐 쓰는 등으로 줄이 깨지는 경우, 기존 CSV 파싱과 같은 방식으로 건너뜀
+    return events
+
+
 async def _random_injection_loop():
     """5분마다, 현재 정상이고 쿨다운 중이 아닌 사이트 중 하나를 무작위로 골라 B/C/D 중 하나를 주입한다."""
     while True:
@@ -135,6 +174,7 @@ async def _random_injection_loop():
         with open(SITES[target]["label_file"], "w") as f:
             f.write(fault)
         _site_runtime[target]["fault_started_at"] = time.time()
+        _record_event(target, "fault_started", fault)
 
 app = FastAPI(title="Net Guardian Model API")
 
@@ -238,8 +278,17 @@ def set_site_scenario(site_id: str, req: ScenarioRequest):
             status_code=409,
             detail=f"{site['name']}은(는) 방금 조치가 완료되어 {remaining}초 동안 장애를 주입할 수 없습니다.",
         )
+    old_scenario = _read_current_scenario(site["label_file"])
     with open(site["label_file"], "w") as f:
         f.write(scenario)
+    if scenario == old_scenario:
+        pass  # 같은 상태로 다시 쓴 경우(변화 없음) - 이벤트를 기록하지 않는다
+    elif scenario == "A":
+        started_at = _site_runtime[site_id]["fault_started_at"]
+        elapsed = (time.time() - started_at) if started_at else None
+        _record_event(site_id, "recovered", old_scenario, elapsed)
+    else:
+        _record_event(site_id, "fault_started", scenario)
     _site_runtime[site_id]["fault_started_at"] = None if scenario == "A" else time.time()
     return {"site": site_id, "scenario": scenario, "cooldown_remaining": remaining,
             **SCENARIO_INFO[SCENARIO_LABEL_MAP[scenario]]}
@@ -249,8 +298,13 @@ def set_site_scenario(site_id: str, req: ScenarioRequest):
 def resolve_site_fault(site_id: str):
     """초동 조치 체크리스트를 전부 완료했을 때 호출 - 정상(A)로 되돌리고 1분 쿨다운을 시작한다."""
     site = _get_site(site_id)
+    old_scenario = _read_current_scenario(site["label_file"])
     with open(site["label_file"], "w") as f:
         f.write("A")
+    if old_scenario != "A":
+        started_at = _site_runtime[site_id]["fault_started_at"]
+        elapsed = (time.time() - started_at) if started_at else None
+        _record_event(site_id, "recovered", old_scenario, elapsed)
     _site_runtime[site_id]["cooldown_until"] = time.time() + COOLDOWN_SEC
     _site_runtime[site_id]["fault_started_at"] = None
     return {"site": site_id, "scenario": "A", "cooldown_remaining": COOLDOWN_SEC, **SCENARIO_INFO[0]}
@@ -416,6 +470,27 @@ def _telemetry_latest(csv_path: str, n: int) -> dict:
             }
         )
     return {"source": source, "points": points}
+
+
+@app.get("/sites/{site_id}/events")
+def site_events(site_id: str, limit: int = 50):
+    """이 사이트의 장애 발생/복구 이벤트 영구 기록(폴링 창 크기와 무관, 백엔드가 직접 기록한 것).
+    복구(recovered) 이벤트의 elapsed_sec는 그 장애가 실제로 지속된 초(실측, 재추정 아님)."""
+    _get_site(site_id)
+    return {"site": site_id, "events": _read_events(site_id, limit)}
+
+
+@app.get("/events")
+def all_events(limit: int = 50):
+    """3개 사이트의 이벤트를 합쳐 시간순으로 최신 limit건만 반환 - 종합 관제/이벤트 이력처럼
+    전체를 한 번에 보여줘야 하는 화면이 사이트마다 따로 호출하지 않도록 하는 편의 엔드포인트."""
+    merged = [
+        {"site": site_id, **ev}
+        for site_id in SITES
+        for ev in _read_events(site_id, limit)
+    ]
+    merged.sort(key=lambda e: e["timestamp"])
+    return {"events": merged[-limit:]}
 
 
 @app.get("/sites/{site_id}/stats/summary")
